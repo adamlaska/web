@@ -7471,10 +7471,10 @@ vue-select@3.10.8:
   resolved "https://registry.yarnpkg.com/vue-select/-/vue-select-3.10.8.tgz#5d0839cba228a9a5efa1a88e5436840eb3fd0c7a"
   integrity sha512-PnjtZWCTiSr04bs8ctPIiU41qnBK+oh/SOe6Pb4gElMMxofDFwUxiUe++mz0+84aTy4zrleGxtvVVyWbiPYBiw==
 
-vue-tel-input@^5.5.0:
-  version "5.5.0"
-  resolved "https://registry.yarnpkg.com/vue-tel-input/-/vue-tel-input-5.5.0.tgz#c62cf17f00ae2b2c320619de42b0038ed22f2738"
-  integrity sha512-NtO/4KI70jS/6j8zcguO0ZeRLeBc5dRGeTqkGcFwyIOuL7C8xajI9XAMqgY+der6jcuLIAk3Xm0o56ijm5jFxg==
+vue-tel-input@^5.10.0:
+  version "5.10.0"
+  resolved "https://registry.yarnpkg.com/vue-tel-input/-/vue-tel-input-5.10.0.tgz#a6621dbb51b4a5a5e5750440fceec47e545409d0"
+  integrity sha512-NPzT6dqxcWGP2pLB5cvot6QJXKg72/6RgA8Pi7yBZuL3RRt3+l55OWSwHwlWvvt5M4sm8PTvaPbIY/Aob8y5rA==
   dependencies:
     core-js "^3.14.0"
     libphonenumber-js "^1.9.6"
