@@ -46,7 +46,7 @@ class BaseAvatar(SuperModel):
 
     ICON_SIZE = (215, 215)
 
-    active = models.BooleanField(default=False)
+    active = models.BooleanField(default=False, db_index=True)
     profile = models.ForeignKey(
         'dashboard.Profile',
         null=True,
@@ -96,22 +96,14 @@ class BaseAvatar(SuperModel):
         if self.hash:
             return BaseAvatar.objects.filter(profile=self.profile, hash=self.hash).last()
 
-    def convert_field(self, source, input_fmt, output_fmt, height=215, width=215, preferred_method='', extra_flags=''):
+    def convert_field(self, source, input_fmt, output_fmt):
         """Handle converting from the source field to the target based on format."""
         try:
             # Convert the provided source to the specified output and store in BytesIO.
             if output_fmt == 'svg':
                 tmpfile_io = convert_wand(source, input_fmt=input_fmt, output_fmt=output_fmt)
             else:
-                tmpfile_io = convert_img(
-                    source,
-                    input_fmt=input_fmt,
-                    output_fmt=output_fmt,
-                    height=height,
-                    width=width,
-                    preferred_method=preferred_method,
-                    extra_flags=extra_flags
-                )
+                tmpfile_io = convert_img(source)
             if self.profile:
                 png_name = self.profile.handle
             else:
@@ -140,6 +132,7 @@ class BaseAvatar(SuperModel):
             return None, None
 
         return None, None
+
 
 class CustomAvatar(BaseAvatar):
     recommended_by_staff = models.BooleanField(default=False)
@@ -173,15 +166,7 @@ class CustomAvatar(BaseAvatar):
                 avatar.svg.save(f"{svg_name}.svg", File(file), save=False)
 
         try:
-            avatar_png = avatar.convert_field(
-                avatar.svg,
-                'svg',
-                'png',
-                height=1000,
-                width=1000,
-                preferred_method='inkscape',
-                extra_flags='--export-area-drawing'
-            )
+            avatar_png = avatar.convert_field(avatar.svg, 'svg', 'png')
             avatar.png = avatar_png
             avatar.hash = BaseAvatar.calculate_hash(Image.open(BytesIO(avatar.png.read())))
             similar_avatar = avatar.find_similar()

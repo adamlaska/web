@@ -17,6 +17,7 @@
 {% endcomment %}
 
 {% load humanize i18n static grants_extra slug %}
+{% if env is not 'prod' or row.bounty is None or row.bounty.network == 'mainnet' %}
 <div class="box d-block m-0 mb-3 activity {% if is_pin %} pinned-activity {% else %} infinite-item {% endif %} {{ row.activity_type }} px-sm-3 py-4" {% if not is_pin %} data-pk="{{row.pk}}" {% endif %}>
   <div class="activity_main pl-2 row bg_{{ row.activity_type }} m-0">
     <div class="col-2 p-0">
@@ -46,13 +47,6 @@
                 <img data-toggle="tooltip" title="Member of @{{org}}" src="/dynamic/avatar/{{ org }}" style="border-radius: 15px; width: 15px; height: 15px;" />
             {% endfor %}
           </div>
-        {% endif %}
-        {% if row.profile.data.type == 'Organization'%}
-          {% if row.profile.handle not in my_tribes|join:"," %}
-            <div style="text-align:center">
-              <a href=# class="align-middle btn btn-outline-primary btn-sm mt-2 font-smaller-7" onclick="joinTribeDirect(this);" data-jointribe='{{row.profile.handle}}'>follow</a>
-            </div>
-          {% endif %}
         {% endif %}
       </div>
     </div>
@@ -108,28 +102,6 @@
           <a data-usercard="{{ row.metadata.to_username }}" href="https://gitcoin.co/profile/{{ row.metadata.to_username }}" >
             @{{ row.metadata.to_username }}
           </a>
-        {% elif row.activity_type == 'create_ptoken' %}
-          @{{ row.ptoken.token_owner_profile.handle }} {% trans "created the" %} {{ row.ptoken.token_symbol }} token.
-        {% elif row.activity_type == 'complete_redemption_ptoken' %}
-          @{{ row.ptoken.token_owner_profile.handle }} {% trans "marked his "%} {{ row.ptoken.token_symbol }}  {% trans "token request from" %}  {{ row.metadata.redemption_requester_name }} {% trans "as complete" %}
-        {% elif row.activity_type == 'mint_ptoken' %}
-          @{{ row.ptoken.token_owner_profile.handle }} {% trans "minted "%} {{ row.ptoken.token_symbol }} tokens.
-        {% elif row.activity_type == 'burn_ptoken' %}
-          @{{ row.ptoken.token_owner_profile.handle }} {% trans "burned "%} {{ row.ptoken.token_symbol }} tokens.
-        {% elif row.activity_type == 'buy_ptoken' %}
-           {% trans "Purchased" %} {{ row.ptoken.token_symbol }} {% trans "time token from" %}  <a href="/{{ row.ptoken.token_owner_profile.handle }}">@{{ row.ptoken.token_owner_profile.handle }}</a>.
-        {% elif row.activity_type == 'edit_price_ptoken' %}
-          @{{ row.ptoken.token_owner_profile.handle }} {% trans "edited the"%} {{ row.ptoken.token_symbol }}  {% trans "token price." %}
-        {% elif row.activity_type == 'accept_redemption_ptoken' %}
-          @{{ row.ptoken.token_owner_profile.handle }} {% trans "accepted a redemption" %} {{ row.ptoken.token_symbol }} {% trans "token request from"%} @{{ row.redemption.redemption_requester.handle }}
-        {% elif row.activity_type == 'denies_redemption_ptoken' and row.profile.id == row.ptoken.token_owner_profile.id and row.metadata.redemption_state == 'cancelled'%}
-          @{{ row.ptoken.token_owner_profile.handle }} {% trans "cancelled a redemption" %} {{ row.ptoken.token_symbol }} {% trans "token request from"%} @{{ row.redemption.redemption_requester.handle }}
-        {% elif row.activity_type == 'denies_redemption_ptoken' and row.profile.id == row.ptoken.token_owner_profile.id %}
-          @{{ row.ptoken.token_owner_profile.handle }} {% trans "denied a redemption" %} {{ row.ptoken.token_symbol }} {% trans "token request from"%} @{{ row.ptoken.token_owner_profile.handle }}
-        {% elif row.activity_type == 'denies_redemption_ptoken' %}
-          @{{ row.redemption.redemption_requester.handle }} {% trans "denied a redemption" %} {{ row.ptoken.token_symbol }} {% trans "token request to"%} @{{ row.ptoken.token_owner_profile.handle }}
-        {% elif row.activity_type == 'incoming_redemption_ptoken' %}
-          @{{ row.ptoken.token_owner_profile.handle }} {% trans " has an incoming redemption finalized by the Buyer "%}
         {% elif row.activity_type == 'mini_clr_payout' %}
           {% trans "got a distribution of" %} <strong>{{row.metadata.amount|floatformat:2}} DAI</strong> in {{row.metadata.round_description}}
         {% elif row.activity_type == 'created_kudos' %}
@@ -285,30 +257,30 @@
       {% elif row.activity_type == 'leaderboard_rank' %}
         <a href="{{ row.metadata.link }}">{{ row.metadata.title }}</a>
       {% elif row.activity_type == 'hypercharge_bounty' %}
-        <a href="{{row.bounty.url}}">{{ row.metadata.title | safe }}</a>
+        <a href="{{row.bounty.url}}">{{ row.metadata.title }}</a>
       {% elif row.activity_type == 'new_bounty' %}
-        <a href="{{row.bounty.url}}">{{ row.bounty.title | safe }}</a>
+        <a href="{{row.bounty.url}}">{{ row.bounty.title }}</a>
       {% elif row.activity_type == 'start_work' %}
         <span>{% trans "started work: " %}</span>
-        <a href="{{row.bounty.url}}">{{ row.bounty.title | safe }}</a>
+        <a href="{{row.bounty.url}}">{{ row.bounty.title }}</a>
       {% elif row.activity_type == 'stop_work' %}
         <span>{% trans "stopped work: " %}</span>
-        <a href="{{row.bounty.url}}">{{ row.bounty.title | safe }}</a>
+        <a href="{{row.bounty.url}}">{{ row.bounty.title }}</a>
       {% elif row.activity_type == 'killed_bounty' %}
         <span>{% trans "canceled bounty: " %}</span>
-        <a href="{{row.bounty.url}}">{{ row.bounty.title | safe }}</a>
+        <a href="{{row.bounty.url}}">{{ row.bounty.title }}</a>
       {% elif row.activity_type == 'increased_bounty' %}
         <span>{% trans "increased funding: " %}</span>
-        <a href="{{row.bounty.url}}">{{ row.bounty.title | safe }}</a>
+        <a href="{{row.bounty.url}}">{{ row.bounty.title }}</a>
       {% elif row.activity_type == 'updated_avatar' %}
         <span>{% trans "updated their avatar" %}</span>
       {% elif row.activity_type == 'unknown_event' %}
         <span>{% trans "made an update to: " %}</span>
-        <a href="{{row.bounty.url}}">{{ row.bounty.title | safe }}</a>
+        <a href="{{row.bounty.url}}">{{ row.bounty.title }}</a>
       {% else %}
         {{row.humanized_activity_type }}
         {% if row.bounty %}
-          : <a href="{{ row.bounty.url }}">{{ row.bounty.title | safe }}</a>
+          : <a href="{{ row.bounty.url }}">{{ row.bounty.title }}</a>
         {% endif %}
       {% endif %}
       </div>
@@ -514,7 +486,9 @@
     </div>
     {% if row.metadata.resource.type == 'background' and not for_email %}
       <div class="status_background_container">
-        <img class="status_background" src="/static/status_backgrounds/{{row.metadata.resource.id}}.png" />
+        {% with 'status_backgrounds/'|add:row.metadata.resource.id|add:'.png' as background_file %}
+          <img class="status_background" src="{% static background_file %}" />
+        {% endwith %}
         <div class="image-text-container">
           <p style="margin: 0pt;">
             {{row.metadata.title}}
@@ -565,7 +539,7 @@
       <div class="col-12 col-md-7 d-flex flex-column pl-5">
         <div class="bounty-detail">
           <div class="title font-subheader font-weight-bold">
-            {{ row.bounty.title | safe }}
+            {{ row.bounty.title }}
           </div>
 
           <div class="bounty-summary p-0 col-12">
@@ -682,7 +656,7 @@
       <div class="col-12 col-md-9 text-left">
         <p class="mt-2 mb-1 font-weight-bold" style="font-size: 1.2em;">{{ row.metadata.resource.title }}</p>
         <p class="small">{{ row.metadata.resource.description|truncatechars:200}}
-          <a href="{{ row.metadata.resource.provider }}" target="_blank" rel="nofollow" style="color: #0056b3" class="d-block">{{ row.metadata.resource.provider }}</a>
+          <a rel="noopener noreferrer" href="{{ row.metadata.resource.provider }}" target="_blank" rel="nofollow" style="color: #0056b3" class="d-block">{{ row.metadata.resource.provider }}</a>
         </p>
       </div>
     </div>
@@ -699,3 +673,4 @@
     </div>
   {% endif %}
 </div>
+{% endif %}

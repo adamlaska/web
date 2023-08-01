@@ -539,7 +539,8 @@ def record_kudos_email_activity(kudos_transfer, github_handle, event_name):
         logger.info('No bounty is associated with this kudos transfer.')
 
     try:
-        Activity.objects.create(**kwargs)
+        activity = Activity.objects.create(**kwargs)
+        activity.populate_activity_index()
     except Exception as e:
         logger.debug(f"error in record_kudos_email_activity: {e} - {event_name} - {kudos_transfer} - {github_handle}")
 
@@ -579,7 +580,8 @@ def record_kudos_activity(kudos_transfer, github_handle, event_name):
         pass
 
     try:
-        Activity.objects.create(**kwargs)
+        activity = Activity.objects.create(**kwargs)
+        activity.populate_activity_index()
     except Exception as e:
         logging.error(f"error in record_kudos_activity: {e} - {event_name} - {kudos_transfer} - {github_handle}")
 
@@ -718,7 +720,7 @@ def redeem_bulk_coupon(coupon, profile, address, ip_address, save_addr=False, su
         'value': int(coupon.token.price_finney / 1000.0 * 10**18),
     })
 
-    if profile.trust_bonus <= 1 and profile.github_created_on > (timezone.now() - timezone.timedelta(days=7)):
+    if profile.final_trust_bonus <= 1 and profile.github_created_on > (timezone.now() - timezone.timedelta(days=7)):
         error = f'Your github profile is too new, so you cannot receive kudos.  Please go to the TrustBonus tab of your profile + verify your profile to proceed.'
         return None, error, None
     else:
@@ -830,7 +832,7 @@ def receive_bulk(request, secret):
             messages.error(request, error)
 
     kudos_transfer = None
-    if request.user.is_authenticated:
+    if request.user.is_authenticated and request.user.profile:
         redemptions = BulkTransferRedemption.objects.filter(redeemed_by=request.user.profile, coupon=coupon)
         if redemptions.exists():
             kudos_transfer = redemptions.first().kudostransfer

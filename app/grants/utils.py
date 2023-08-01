@@ -17,7 +17,9 @@ You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 """
+import json
 import logging
+import math
 import os
 import re
 import urllib.request
@@ -28,6 +30,8 @@ from secrets import token_hex
 
 from django.utils import timezone
 
+import numpy as np
+import pandas as pd
 from app.settings import BASE_URL, MEDIA_URL, NOTION_API_KEY, NOTION_SYBIL_DB
 from app.utils import notion_write
 from avatar.utils import convert_img
@@ -36,13 +40,15 @@ from gas.utils import eth_usd_conv_rate
 from grants.sync.algorand import sync_algorand_payout
 from grants.sync.binance import sync_binance_payout
 from grants.sync.celo import sync_celo_payout
+from grants.sync.cosmos import sync_cosmos_payout
 from grants.sync.harmony import sync_harmony_payout
 from grants.sync.polkadot import sync_polkadot_payout
 from grants.sync.rsk import sync_rsk_payout
 from grants.sync.zcash import sync_zcash_payout
 from grants.sync.zil import sync_zil_payout
-from perftools.models import JSONStore, StaticJsonEnv
+from perftools.models import StaticJsonEnv
 from PIL import Image, ImageDraw, ImageOps
+from townsquare.models import SquelchProfile
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +65,8 @@ tenant_payout_mapper = {
     'BINANCE': sync_binance_payout,
     'KUSAMA': sync_polkadot_payout,
     'RSK': sync_rsk_payout,
-    'ALGORAND': sync_algorand_payout
+    'ALGORAND': sync_algorand_payout,
+    'COSMOS': sync_cosmos_payout
 }
 
 def get_clr_rounds_metadata():
@@ -73,25 +80,58 @@ def get_clr_rounds_metadata():
         clr_round = CLR_ROUND_DATA['round_num']
         start_date = CLR_ROUND_DATA['round_start']
         end_date = CLR_ROUND_DATA['round_end']
-        round_active = CLR_ROUND_DATA['round_active']
+        show_round_banner = json.loads(CLR_ROUND_DATA['show_round_banner'])
+        claim_start_date = CLR_ROUND_DATA.get('claim_start_date')
+        claim_end_date = CLR_ROUND_DATA.get('claim_end_date')
+        banner_round_name = CLR_ROUND_DATA.get('banner_round_name')
 
         # timezones are in UTC (format example: 2021-06-16:15.00.00)
         round_start_date = datetime.strptime(start_date, '%Y-%m-%d:%H.%M.%S')
         round_end_date = datetime.strptime(end_date, '%Y-%m-%d:%H.%M.%S')
+
+        now = datetime.now()
+
+        if claim_start_date and claim_end_date:
+            claim_start_date = datetime.strptime(claim_start_date, '%Y-%m-%d:%H.%M.%S')
+            claim_end_date = datetime.strptime(claim_end_date, '%Y-%m-%d:%H.%M.%S')
+
+        if round_start_date > now:
+            round_status = 'upcoming'
+        elif round_start_date <= now <= round_end_date:
+            round_status = 'active'
+        elif claim_start_date and claim_end_date and claim_start_date <= now <= claim_end_date:
+            round_status = 'claim'
+        else:
+            round_status = 'done'
 
     except:
         # setting defaults
         clr_round=1
         round_start_date = timezone.now()
         round_end_date = timezone.now() + timezone.timedelta(days=14)
-        round_active = True
+        show_round_banner = False
+        claim_start_date = None
+        claim_end_date = None
+        round_status = 'done'
+        banner_round_name = ''
 
-    return clr_round, round_start_date, round_end_date, round_active
+    return {
+        'clr_round': clr_round,
+        'round_start_date': round_start_date,
+        'round_end_date': round_end_date,
+        'show_round_banner': show_round_banner,
+        'claim_start_date': claim_start_date,
+        'claim_end_date': claim_end_date,
+        'round_status': round_status,
+        'banner_round_name': banner_round_name
+    }
+
 
 def get_upload_filename(instance, filename):
     salt = token_hex(16)
     file_path = os.path.basename(filename)
     return f"grants/{getattr(instance, '_path', '')}/{salt}/{file_path}"
+
 
 def is_grant_team_member(grant, profile):
     """Checks to see if profile is a grant team member
@@ -112,6 +152,7 @@ def is_grant_team_member(grant, profile):
                 is_team_member = True
                 break
     return is_team_member
+
 
 def amount_in_wei(tokenAddress, amount):
     from dashboard.tokens import addr_to_token
@@ -279,6 +320,9 @@ def save_grant_to_notion(grant):
     if NOTION_SYBIL_DB and NOTION_API_KEY:
         # fully qualified url
         fullUrl = BASE_URL.rstrip('/') + grant.url
+        grant_tags = []
+        for tag in grant.tags_requested.all():
+            grant_tags.append(str(tag))
 
         # write to NOTION_SYBIL_DB following the defined schema (returns dict of new object)
         return notion_write(NOTION_SYBIL_DB, {
@@ -306,5 +350,176 @@ def save_grant_to_notion(grant):
                     "plain_text": fullUrl,
                     "href": fullUrl
                 }]
+            },
+             "Requested Rounds": {
+                "id": "qBXH",
+                "type": "rich_text",
+                "rich_text": [
+                    {
+                        "type": "text",
+                        "text": {
+                            "content": ", ".join(grant_tags),
+                            "link": None
+                        },
+                        "annotations": {
+                            "bold": False,
+                            "italic": False,
+                            "strikethrough": False,
+                            "underline": False,
+                            "code": False,
+                            "color": "default"
+                        },
+                        "plain_text": ", ".join(grant_tags),
+                        "href": None
+                    }
+                ]
+            },
+            "Eligibility Tag Reasoning": {
+                "id": "Q]?]",
+                "type": "rich_text",
+                "rich_text": [
+                    {
+                        "type": "text",
+                        "text": {
+                            "content": grant.tag_eligibility_reason,
+                            "link": None
+                        },
+                        "annotations": {
+                            "bold": False,
+                            "italic": False,
+                            "strikethrough": False,
+                            "underline": False,
+                            "code": False,
+                            "color": "default"
+                        },
+                        "plain_text": grant.tag_eligibility_reason,
+                        "href": None
+                    }
+                ]
             }
         })
+
+
+def toggle_user_sybil(sybil_users, non_sybil_users):
+    '''util function which marks users as sybil/not'''
+
+    from dashboard.models import Profile
+
+    squelched_profiles = SquelchProfile.objects.all()
+    if sybil_users:
+        # iterate through users which need to be packed as sybil
+        for user in sybil_users:
+            try:
+                # get user profile. note
+                profile = Profile.objects.filter(handle=user.get('handle')).first()
+                if profile:
+                    label = user.get('label')
+                    comment = user.get('comment')
+
+                    if not comment or comment and isNaN(comment):
+                        comment = 'added by bsci'
+
+                    # check if user has entry in SquelchProfile
+                    if (
+                        not squelched_profiles.filter(profile=profile).first() and
+                        label and comment
+                    ):
+                        # mark user as sybil
+                        SquelchProfile.objects.create(
+                            profile=profile,
+                            label=label,
+                            comments=comment
+                        )
+                else:
+                    print(f"error: profile not found for {user.get('handle')} as sybil.")
+            except Exception as e:
+                print(f"error: unable to mark user {user.get('handle')} as sybil. {e}")
+
+    if non_sybil_users:
+        # exclude squelches added by manual
+        squelched_profiles = squelched_profiles.exclude(label='Manual')
+        # iterate and remove sybil from user
+        for user in non_sybil_users:
+            try:
+                profile = Profile.objects.filter(handle=user.get('handle')).first()
+                squelched_profiles.filter(profile=profile).delete()
+            except Exception as e:
+                print(f"error: unable to mark {user.get('handle')} as non sybil. {e}")
+
+
+def bsci_script(csv: str) -> tuple:
+    """
+    Generate records of sybil / non-sybil users based
+    on the CSV output as provided by BSci detection pipeline.
+    """
+
+    # Assumptions
+    RENAME_MAP = {'notes': 'comment'}
+    ML_THRESHOLD = 0.8
+    EVAL_THRESHOLD = 0.8
+    HEURISTIC_THRESHOLD = 0.5
+
+def bsci_script(csv: str) -> tuple:
+    """
+    Generate records of sybil / non-sybil users based
+    on the CSV output as provided by BSci detection pipeline.
+    """
+
+    # Assumptions
+    RENAME_MAP = {'notes': 'comment'}
+    ML_THRESHOLD = 0.8
+    EVAL_THRESHOLD = 0.8
+    HEURISTIC_THRESHOLD = 0.5
+
+    # Read CSV
+
+    try:
+        df = (pd.read_csv(csv)
+                .assign(is_sybil=None)
+                .assign(label=None)
+                .rename(columns=RENAME_MAP))
+
+        # Get label domains
+        rows_with_evaluation = ~pd.isnull(df.evaluation_score)
+        rows_with_heuristic = ~pd.isnull(df.heuristic_score)
+        rows_with_prediction = ~pd.isnull(df.prediction_score)
+
+        labels_by_evaluation = rows_with_evaluation
+        labels_by_heuristic = (rows_with_heuristic & (rows_with_heuristic
+                                                    ^ labels_by_evaluation))
+        labels_by_prediction = (rows_with_prediction & (rows_with_prediction
+                                                        ^ (labels_by_heuristic |
+                                                        labels_by_evaluation)))
+
+        # Assign final `is_sybil` markings according to a priorization criteria
+        df.loc[labels_by_evaluation, 'is_sybil'] = df[labels_by_evaluation].evaluation_score > EVAL_THRESHOLD
+        df.loc[labels_by_evaluation, 'label'] = "Human Evaluation"
+
+        df.loc[labels_by_heuristic, 'is_sybil'] = df[labels_by_heuristic].heuristic_score > HEURISTIC_THRESHOLD
+        df.loc[labels_by_heuristic, 'label'] = "Heuristics"
+
+        df.loc[labels_by_prediction, 'is_sybil'] = df[labels_by_prediction].prediction_score > ML_THRESHOLD
+        df.loc[labels_by_prediction, 'label'] = "ML Prediction"
+
+        # Generate dict records
+        sybil_records = df.query('is_sybil == True').to_dict('records')
+        non_sybil_records = df.query('is_sybil == False').to_dict('records')
+
+        # Output
+        return (sybil_records, non_sybil_records)
+    except Exception as e:
+        logger.error(f'error: bsci_sybil_script - {e}')
+        return None
+
+
+def isNaN(string):
+    return string != string
+
+def is_valid_eip_1271_signature(web3, address, hash, signature) -> bool:
+    from grants.abi.eip_1271_abi import EIP_1271_ABI
+    try:
+        eip_1271_contract = web3.eth.contract(address=address, abi=EIP_1271_ABI)
+        retval = eip_1271_contract.functions.isValidSignature(hash, signature).call()
+        return web3.toInt(retval) == 0x1626ba7e
+    except Exception as e:
+        return False

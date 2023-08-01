@@ -1,4 +1,3 @@
-
 const isStaff = document.contxt.is_staff || false;
 
 const userCode = typeof user_code !== 'undefined' ? user_code : undefined;
@@ -11,11 +10,18 @@ Quill.register('modules/ImageExtend', ImageExtend);
 
 Vue.mixin({
   methods: {
+    updateCartData: function(e) {
+      const vm = this;
+      const grants_in_cart = (e && e.detail && e.detail.list && e.detail.list) || [];
+      const isInCart = grants_in_cart.find((grant) => vm.grant.id == grant.grant_id);
+
+      vm.$set(vm.grant, 'isInCart', isInCart);
+    },
     grantInCart: function() {
       const vm = this;
-      const inCart = CartData.cartContainsGrantWithId(vm.grant.id);
+      const isInCart = CartData.cartContainsGrantWithId(vm.grant.id);
 
-      vm.$set(vm.grant, 'isInCart', inCart);
+      vm.$set(vm.grant, 'isInCart', isInCart);
       return vm.grant.isInCart;
     },
     addToCart: async function() {
@@ -25,20 +31,42 @@ Vue.mixin({
 
       vm.$set(vm.grant, 'isInCart', true);
       CartData.addToCart(response.grant);
-      if (typeof showSideCart != 'undefined') {
-        showSideCart();
-      }
 
+      gtag('event', 'add_to_cart', {
+        // value, currency are set when checking out, but required
+        value: 0,
+        currency: 'USD',
+        items: [
+          {
+            item_id: vm.grant.id,
+            item_name: vm.grant.title,
+            item_category: vm.grant?.active_round_names?.toString(),
+            item_brand: vm.grant?.admin_profile?.handle,
+            quantity: 1
+          }
+        ]
+      });
     },
     removeFromCart: function() {
       const vm = this;
 
+      gtag('event', 'remove_from_cart', {
+        // value, currency are set when checking out, but required
+        value: 0,
+        currency: 'USD',
+        items: [
+          {
+            item_id: vm.grant.id,
+            item_name: vm.grant.title,
+            item_category: vm.grant?.active_round_names?.toString(),
+            item_brand: vm.grant?.admin_profile?.handle,
+            quantity: 1
+          }
+        ]
+      });
+
       vm.$set(vm.grant, 'isInCart', false);
       CartData.removeIdFromCart(vm.grant.id);
-      if (typeof showSideCart != 'undefined') {
-        showSideCart();
-      }
-
     },
     editGrantModal: function() {
       const vm = this;
@@ -83,8 +111,10 @@ Vue.mixin({
         'kusama_payout_address': vm.grant.kusama_payout_address,
         'rsk_payout_address': vm.grant.rsk_payout_address,
         'algorand_payout_address': vm.grant.algorand_payout_address,
+        'cosmos_payout_address': vm.grant.cosmos_payout_address,
         'region': vm.grant.region?.name || undefined,
-        'has_external_funding': vm.grant.has_external_funding
+        'has_external_funding': vm.grant.has_external_funding,
+        'grant_tags[]': JSON.stringify(vm.grantTagsFormatted)
       };
 
       if (vm.logo) {
@@ -113,6 +143,7 @@ Vue.mixin({
               vm.grant.verified = false;
             }
             vm.grant_twitter_handle_1 = vm.grant.twitter_handle_1;
+            vm.grant.is_idle = false;
             vm.$root.$emit('bv::toggle::collapse', 'sidebar-grant-edit');
             _alert('Updated grant.', 'success');
 
@@ -167,6 +198,7 @@ Vue.mixin({
 
       if (response.action === 'follow') {
         vm.grant.favorite = true;
+        vm.dismissFavoriteAlertCountDown = 10;
       } else {
         vm.grant.favorite = false;
       }
@@ -368,50 +400,12 @@ Vue.mixin({
       }
       vm.submitted = false;
       return true; // no errors, continue to create grant
-    },
-    claimMatch: async function(recipient) {
-      // Helper method to manage state
-      const waitingState = (state) => {
-        indicateMetamaskPopup(!state);
-        $('#claim-match').prop('disabled', state);
-      };
-
-      // Connect wallet
-      if (!provider) {
-        await onConnect();
-      }
-
-      // Confirm wallet was connected (user may have closed wallet connection prompt)
-      if (!provider) {
-        return;
-      }
-      waitingState(true);
-      const user = (await web3.eth.getAccounts())[0];
-
-      // Get contract instance
-      const matchPayouts = await new web3.eth.Contract(
-        JSON.parse(document.contxt.match_payouts_abi),
-        document.contxt.match_payouts_address
-      );
-
-      // Claim payout
-      matchPayouts.methods.claimMatchPayout(recipient)
-        .send({from: user})
-        .on('transactionHash', async function(txHash) {
-          waitingState(false);
-          $('#match-payout-section').hide();
-          _alert("Match payout claimed! Funds will be sent to this grant's address", 'success');
-        })
-        .on('error', function(error) {
-          waitingState(false);
-          _alert(error, 'danger');
-        });
     }
   },
   computed: {
     teamFormatted: {
       get() {
-        return this.grant.team_members.map((user)=> {
+        return this.grant.team_members ? this.grant.team_members.map((user)=> {
           if (!user?.fields) {
             return user;
           }
@@ -421,11 +415,46 @@ Vue.mixin({
           newTeam['avatar_url'] = `/dynamic/avatar/${user.fields.handle}`;
           newTeam['text'] = user.fields.handle;
           return newTeam;
+        }) : [];
+
+      },
+      set(value) {
+        this.grant.team_members = value ? value.map((user) => {
+
+          return {
+            fields: {
+              handle: user.text
+            },
+            model: 'dashboard.profile',
+            pk: user.id
+          };
+        }) : [];
+      }
+    },
+    grantTagsFormatted: {
+      get() {
+        return this.grant.grant_tags.map((grant_tag)=> {
+          if (!grant_tag?.fields) {
+            return grant_tag;
+          }
+
+          return {
+            'id': grant_tag.pk,
+            'name': grant_tag.fields.name
+          };
         });
 
       },
       set(value) {
-        this.grant.team_members = value;
+        this.grant.grant_tags = value.map((tag) => {
+
+          return {
+            fields: {
+              name: tag.name
+            },
+            pk: tag.id
+          };
+        });
       }
     },
     editor() {
@@ -470,6 +499,7 @@ Vue.mixin({
       }
     }
   }
+
 });
 
 
@@ -488,6 +518,7 @@ Vue.component('grant-details', {
   template: '#template-grant-details',
   data() {
     return {
+      chainId: '',
       dirty: false,
       submitted: false,
       user_code: userCode,
@@ -497,6 +528,7 @@ Vue.component('grant-details', {
       logo: null,
       logoPreview: null,
       logoBackground: null,
+      dismissFavoriteAlertCountDown: 0,
       rows: 0,
       perPage: 4,
       currentPage: 1,
@@ -533,7 +565,7 @@ Vue.component('grant-details', {
           }
         },
         theme: 'snow',
-        placeholder: 'Give a detailed desciription about your Grant'
+        placeholder: 'Describe what your project is about. What would you like to build? How will you use the funding?'
       },
       grantRegions: [
         { 'name': 'north_america', 'label': 'North America'},
@@ -546,21 +578,76 @@ Vue.component('grant-details', {
         { 'name': 'east_asia', 'label': 'East Asia'},
         { 'name': 'southeast_asia', 'label': 'Southeast Asia'}
       ],
+      grantChains: [
+        { 'name': 'eth', 'label': 'Ethereum'},
+        { 'name': 'zcash', 'label': 'ZCash'},
+        { 'name': 'celo', 'label': 'Celo'},
+        { 'name': 'zilliqa', 'label': 'Zilliqa'},
+        { 'name': 'harmony', 'label': 'Harmony'},
+        { 'name': 'binance', 'label': 'Binance'},
+        { 'name': 'polkadot', 'label': 'Polkadot'},
+        { 'name': 'kusama', 'label': 'Kusama'},
+        { 'name': 'algorand', 'label': 'Algorand'}
+      ],
+      grant_tags: document.grant_tags ?? [],
+      grant_salected_tags: [],
       externalFundingOptions: [
         {'key': 'yes', 'value': 'Yes, this project has raised external funding.'},
         {'key': 'no', 'value': 'No, this project has not raised external funding.'}
       ]
     };
   },
-  mounted: function() {
+  methods: {
+    grantIsContract: async function(admin_address) {
+      if (admin_address && web3 && web3.eth) {
+        const code = await web3.eth.getCode(admin_address);
+
+        return code !== '0x';
+      }
+      return false;
+    }
+  },
+  mounted: async function() {
     const vm = this;
 
     vm.grant_twitter_handle_1 = vm.grant.twitter_handle_1;
     vm.grant.description_rich_edited = vm.grant.description_rich;
+    vm.grant_salected_tags = vm.grant.grant_tags ? vm.grant.grant_tags.map(tag => tag.pk) : [];
+    vm.chainId = vm.grant.tenants.length > 0 ? vm.grant.tenants[0].toLowerCase() : '';
+
+    const amount_received = isNaN(vm.grant.amount_received) ? Number(vm.grant.amount_received.replace(',', '')) : Number(vm.grant.amount_received);
+    const rounded_lifetime_amount = Math.round(amount_received / 1000) * 1000;
+
+    vm.grant.rounded_lifetime_amount = (rounded_lifetime_amount > 1000) ?
+      `~$${rounded_lifetime_amount.toLocaleString()}` : 'Less than $1,000';
+
     if (vm.grant.description_rich_edited) {
       vm.editor.updateContents(JSON.parse(vm.grant.description_rich));
     }
     vm.grantInCart();
+
+    // watch for cartUpdates
+    window.addEventListener('cartDataUpdated', vm.updateCartData);
+
+    gtag('event', 'view_item', {
+      // currency and value are required items but value is not known until cart
+      currency: 'USD',
+      value: 0,
+      items: [
+        {
+          item_id: vm.grant.id,
+          item_name: vm.grant.title,
+          item_category: vm.grant.clr_round_num,
+          item_brand: vm.grant.admin_address
+        }
+      ]
+    });
+  },
+  beforeDestroy() {
+    const vm = this;
+
+    // unwatch cartUpdates
+    window.removeEventListener('cartDataUpdated', vm.updateCartData);
   },
   watch: {
     grant: {

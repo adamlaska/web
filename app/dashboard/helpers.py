@@ -30,15 +30,11 @@ from django.http import Http404, HttpResponseBadRequest, JsonResponse
 from django.utils import timezone
 
 from app.utils import get_semaphore, sync_profile
-from bounty_requests.models import BountyRequest
 from dashboard.models import (
     Activity, BlockedURLFilter, Bounty, BountyEvent, BountyFulfillment, BountyInvites, BountySyncRequest, Coupon,
-    HackathonEvent, UserAction,
+    HackathonEvent, Profile, UserAction,
 )
-from dashboard.notifications import (
-    maybe_market_to_email, maybe_market_to_github, maybe_market_to_slack, maybe_market_to_user_slack,
-    notify_of_lowball_bounty,
-)
+from dashboard.notifications import maybe_market_to_email, maybe_market_to_github, notify_of_lowball_bounty
 from dashboard.tokens import addr_to_token
 from economy.utils import convert_amount
 from git.utils import get_issue_details, get_url_dict, org_name
@@ -47,8 +43,6 @@ from marketing.mails import new_reserved_issue
 from pytz import UTC
 from ratelimit.decorators import ratelimit
 from redis_semaphore import NotAvailable as SemaphoreExists
-
-from .models import Profile
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +218,31 @@ def issue_details(request):
         logger.warning(e)
         message = 'could not pull back remote response'
         return JsonResponse({'status':'false','message':message}, status=404)
+
     return JsonResponse(response)
+
+
+@ratelimit(key='ip', rate='50/m', method=ratelimit.UNSAFE, block=True)
+def validate_org_url(request):
+    """Determine if the github org URL represents a valid bounty sponsor.
+
+    Returns:
+        Empty response with status 200 if the url is valid
+        
+    """
+    url = request.GET.get('url')
+    hackathon_slug = request.GET.get('hackathon_slug')
+
+    if hackathon_slug:
+        sponsor_profiles = HackathonEvent.objects.filter(slug__iexact=hackathon_slug).prefetch_related('sponsor_profiles').values_list('sponsor_profiles__handle', flat=True)
+        sponsor_profiles = list(sponsor_profiles)
+        org_issue = org_name(url).lower()
+
+        if org_issue not in sponsor_profiles:
+            message = 'This GitHub URL is not for a valid sponsor'
+            return JsonResponse({'status':'false','message':message}, status=404)
+
+    return JsonResponse({'status': 'true'})
 
 
 def normalize_url(url):
@@ -418,13 +436,6 @@ def create_new_bounty(old_bounties, bounty_payload, bounty_details, bounty_id):
         url = normalize_url(url)
     else:
         raise UnsupportedSchemaException('No webReferenceURL found. Cannot continue!')
-
-    try:
-        bounty_request = BountyRequest.objects.get(github_url=url, status='o')
-        bounty_request.status = 'f'
-        bounty_request.save()
-    except BountyRequest.DoesNotExist:
-        pass
 
     # Check if we have any fulfillments.  If so, check if they are accepted.
     # If there are no fulfillments, accepted is automatically False.
@@ -832,7 +843,8 @@ def record_bounty_activity(event_name, old_bounty, new_bounty, _fulfillment=None
                 event_type=bounty_activity_event_adapter[event_name],
                 created_by=user_profile)
             new_bounty.handle_event(event)
-        return Activity.objects.create(
+        
+        activity = Activity.objects.create(
             created_on=timezone.now() if not override_created else override_created,
             profile=user_profile,
             activity_type=event_name,
@@ -842,6 +854,10 @@ def record_bounty_activity(event_name, old_bounty, new_bounty, _fulfillment=None
                 'old_bounty': get_bounty_data_for_activity(old_bounty) if old_bounty else None,
                 'fulfillment': get_fulfillment_data_for_activity(fulfillment) if fulfillment else None,
             })
+
+        activity.populate_activity_index()
+
+        return activity
     return None
 
 
@@ -960,8 +976,6 @@ def process_bounty_changes(old_bounty, new_bounty):
     # marketing
     if event_name != 'unknown_event':
         print("============ posting ==============")
-        did_post_to_slack = maybe_market_to_slack(new_bounty, event_name)
-        did_post_to_user_slack = maybe_market_to_user_slack(new_bounty, event_name)
         did_post_to_github = maybe_market_to_github(new_bounty, event_name, profile_pairs)
         did_post_to_email = maybe_market_to_email(new_bounty, event_name)
         print("============ done posting ==============")
@@ -971,8 +985,6 @@ def process_bounty_changes(old_bounty, new_bounty):
             'did_bsr': did_bsr,
             'did_post_to_email': did_post_to_email,
             'did_post_to_github': did_post_to_github,
-            'did_post_to_slack': did_post_to_slack,
-            'did_post_to_user_slack': did_post_to_user_slack,
             'did_post_to_twitter': False,
         }
 

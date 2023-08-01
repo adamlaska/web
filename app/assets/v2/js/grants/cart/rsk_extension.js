@@ -1,4 +1,4 @@
-const contributeWithRskExtension = async(grant, vm, modal) => {
+const contributeWithRskExtension = async(grant, vm) => {
   const token_name = grant.grant_donation_currency;
   const amount = grant.grant_donation_amount;
   const to_address = grant.rsk_payout_address;
@@ -19,15 +19,13 @@ const contributeWithRskExtension = async(grant, vm, modal) => {
     try {
       console.log(ethereum.selectedAddress);
     } catch (e) {
-      modal.closeModal();
       _alert({ message: 'Please download or enable Nifty Wallet extension' }, 'danger');
       return;
     }
 
     if (!ethereum.selectedAddress) {
-      modal.closeModal();
       return onConnect().then(() => {
-        modal.openModal();
+        console.log('wallet connected');
       });
     }
   }
@@ -43,7 +41,7 @@ const contributeWithRskExtension = async(grant, vm, modal) => {
     rbtcBalance = rskClient.utils.fromWei(balanceInWei, 'ether');
 
     if (Number(rbtcBalance) < amount) {
-      _alert({ message: `Insufficent balance in address ${ethereum.selectedAddress}` }, 'danger');
+      _alert({ message: `Insufficient balance in address ${ethereum.selectedAddress}` }, 'danger');
       return;
     }
 
@@ -68,7 +66,7 @@ const contributeWithRskExtension = async(grant, vm, modal) => {
     amountInWei = amount * 1.0 * Math.pow(10, token.decimals);
 
     if (Number(balance) < amountInWei) {
-      _alert({ message: `Insufficent balance in address ${ethereum.selectedAddress}` }, 'danger');
+      _alert({ message: `Insufficient balance in address ${ethereum.selectedAddress}` }, 'danger');
       return;
     }
 
@@ -108,7 +106,6 @@ const contributeWithRskExtension = async(grant, vm, modal) => {
           'tx_id': txn,
           'token_symbol': grant.grant_donation_currency,
           'tenant': 'RSK',
-          'comment': grant.grant_comments,
           'amount_per_period': grant.grant_donation_amount
         }]
       };
@@ -133,12 +130,12 @@ const contributeWithRskExtension = async(grant, vm, modal) => {
           vm.updatePaymentStatus(grant.grant_id, 'done', txn);
         } else {
           vm.updatePaymentStatus(grant.grant_id, 'failed');
-          _alert('Unable to make contribute to grant. Please try again later', 'danger');
+          _alert('Unable to contribute to grant. Please try again later', 'danger');
           console.error(`error: grant contribution failed with status: ${response.status} and message: ${response.message}`);
         }
       }).catch(function(error) {
         vm.updatePaymentStatus(grant.grant_id, 'failed');
-        _alert('Unable to make contribute to grant. Please try again later', 'danger');
+        _alert('Unable to contribute to grant. Please try again later', 'danger');
         console.log(error);
       });
     }

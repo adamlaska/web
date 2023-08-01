@@ -79,7 +79,7 @@ class DashboardModelsTest(TestCase):
             profile=fulfiller_profile,
         )
         assert str(bounty) == f'{bounty.pk}: foo, 0 ETH @ {naturaltime(bounty.web3_created)}'
-        assert bounty.url == f'{settings.BASE_URL}issue/gitcoinco/web/11/{bounty.standard_bounties_id}'
+        assert bounty.url == f'{settings.BASE_URL}issue/{bounty.id}'
         assert bounty.title_or_desc == 'foo'
         assert bounty.issue_description_text == 'hello world'
         assert bounty.org_name == 'gitcoinco'
@@ -154,7 +154,7 @@ class DashboardModelsTest(TestCase):
             github_url='https://github.com/gitcoinco/web/issues/0xDEADBEEF',
             raw_data={}
         )
-        expected_url = '/funding/details?url=https://github.com/gitcoinco/web/issues/0xDEADBEEF'
+        expected_url = f'/issue/{bounty.id}'
         assert bounty.get_relative_url() == expected_url
 
     @staticmethod
@@ -208,21 +208,6 @@ class DashboardModelsTest(TestCase):
             raw_data={'contract_deadline': 1001, 'ipfs_deadline': 1000}
         )
         assert bounty.can_submit_after_expiration_date is True
-
-    # @staticmethod
-    # def test_title_or_desc():
-    #     bounty = Bounty.objects.create(
-    #         title='TitleTest',
-    #         idx_status=0,
-    #         is_open=False,
-    #         web3_created=datetime(2008, 10, 31, tzinfo=pytz.UTC),
-    #         expires_date=datetime(2008, 11, 30, tzinfo=pytz.UTC),
-    #         github_url='https://github.com/gitcoinco/web/issues/1',
-    #         raw_data={}
-    #     )
-    #     assert bounty.title_or_desc == "TitleTest"
-    #     bounty.title = None
-    #     assert bounty.title_or_desc == "HTTP API Documentation"
 
     @staticmethod
     def test_github_issue_number():
@@ -430,6 +415,7 @@ class DashboardModelsTest(TestCase):
             tokenAddress='0x0000000000000000000000000000000000000000',
             web3_type='yge',
         )
+        tip.save()
         assert str(tip) == '(net) - PENDING 7 ETH to fred from NA, created: today, expires: tomorrow'
         assert tip.get_natural_value() == 7
         assert tip.value_in_eth == 7
@@ -504,11 +490,11 @@ class DashboardModelsTest(TestCase):
             handle='fred',
             email='fred@localhost'
         )
-        CustomAvatar.objects.create(profile=profile, config="{}")
+        custom_avatar = CustomAvatar.objects.create(profile=profile, config="{}")
         social_avatar = SocialAvatar.objects.create(profile=profile)
         profile.activate_avatar(social_avatar.pk)
-        assert profile.avatar_baseavatar_related.get(pk=1).active is False
-        assert profile.avatar_baseavatar_related.get(pk=2).active is True
+        assert profile.avatar_baseavatar_related.get(pk=custom_avatar.id).active is False
+        assert profile.avatar_baseavatar_related.get(pk=social_avatar.id).active is True
 
     @staticmethod
     def test_bounty_snooze_url():
@@ -554,7 +540,8 @@ class DashboardModelsTest(TestCase):
             experience_level='Intermediate',
             raw_data={},
         )
-        assert bounty.canonical_url == settings.BASE_URL + 'issue/gitcoinco/web/12'
+        bounty.save()
+        assert bounty.canonical_url == settings.BASE_URL + f'issue/{bounty.id}'
 
     @staticmethod
     def test_bounty_clean_gh_url_on_save():

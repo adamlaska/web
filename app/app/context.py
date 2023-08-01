@@ -32,9 +32,8 @@ from dashboard.models import Activity, Tip, UserAction
 from dashboard.tasks import record_join, record_visit
 from dashboard.utils import _get_utm_from_cookie
 from kudos.models import KudosTransfer
-from marketing.utils import handle_marketing_callback
+from marketing.common.utils import handle_marketing_callback
 from perftools.models import JSONStore
-from ptokens.models import PersonalToken
 from retail.helpers import get_ip
 from townsquare.models import Announcement
 
@@ -74,12 +73,10 @@ def preprocess(request):
     if request.path == '/lbcheck':
         return {}
 
-    ptoken = None
-
-    search_url = ''
-    user_is_authenticated = request.user.is_authenticated
+    user_is_authenticated = request.user.is_authenticated if hasattr(request, 'user') else None
     profile = request.user.profile if user_is_authenticated and hasattr(request.user, 'profile') else None
-    if user_is_authenticated and profile and profile.pk:
+    user_is_authenticated_and_valid = user_is_authenticated and profile and profile.pk
+    if user_is_authenticated_and_valid:
         # what actions to take?
         should_record_join = not profile.last_visit
         should_record_visit = not profile.last_visit or profile.last_visit < (
@@ -96,22 +93,13 @@ def preprocess(request):
             session_key = request.session._session_key
             utm = _get_utm_from_cookie(request)
             # record the visit as a celery task
-            record_visit.delay(request.user.pk, profile.pk, ip_address, visitorId, useragent, referrer, path, session_key, utm)
+            record_visit.delay(
+                request.user.pk, profile.pk, ip_address, visitorId, useragent, referrer, path, session_key, utm
+            )
 
         if should_record_join:
             # record the joined action as a celery task
             record_join.delay(profile.pk)
-
-        ptoken = PersonalToken.objects.filter(token_owner_profile=profile).first()
-
-    # Check if user's location supports pTokens
-    try:
-        current_location = profile.locations[-1]
-        is_location_blocked_for_ptokens = current_location['country_code'] == settings.PTOKEN_BLOCKED_REGION['country_code'] \
-            and current_location['region'] == settings.PTOKEN_BLOCKED_REGION['region']
-    except:
-        # If user is not logged in
-        is_location_blocked_for_ptokens = False
 
     # handles marketing callbacks
     if request.GET.get('cb'):
@@ -121,15 +109,14 @@ def preprocess(request):
     header_msg, footer_msg, nav_salt = get_sitewide_announcements()
 
     try:
-        onboard_tasks = JSONStore.objects.get(key='onboard_tasks').data
+        onboard_tasks = JSONStore.objects.cache().get(key='onboard_tasks').data
     except JSONStore.DoesNotExist:
         onboard_tasks = []
 
     # town square wall post max length
-    max_length_offset = abs(((
-        request.user.profile.created_on
-        if hasattr(request.user, 'profile') and request.user.is_authenticated else timezone.now()
-    ) - timezone.now()).days)
+    max_length_offset = abs(
+        ((request.user.profile.created_on if user_is_authenticated_and_valid else timezone.now()) - timezone.now()).days
+    )
     max_length = 600 + max_length_offset
 
     context = {
@@ -174,12 +161,6 @@ def preprocess(request):
         'profile_url': profile.url if profile else False,
         'quests_live': settings.QUESTS_LIVE,
         'onboard_tasks': onboard_tasks,
-        'ptoken_abi': settings.PTOKEN_ABI,
-        'ptoken_factory_address': settings.PTOKEN_FACTORY_ADDRESS,
-        'ptoken_factory_abi': settings.PTOKEN_FACTORY_ABI,
-        'ptoken_address': ptoken.token_address if ptoken else '',
-        'ptoken_id': ptoken.id if ptoken else None,
-        'is_location_blocked_for_ptokens': is_location_blocked_for_ptokens,
         'match_payouts_abi': settings.MATCH_PAYOUTS_ABI,
         'match_payouts_address': settings.MATCH_PAYOUTS_ADDRESS,
         'mautic_id': profile.mautic_id if profile else None

@@ -18,11 +18,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // TODO: MOVE TO GRANTS shared
-  if (typeof CartData != 'undefined') {
-    applyCartMenuStyles();
-  }
-
   $('body').on('click', '.copy_me', function() {
     $(this).focus();
     $(this).select();
@@ -69,8 +64,10 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   var force_no_www = function() {
-    if (document.location.href.indexOf('https://www.gitcoin.co') != -1) {
-      var new_url = document.location.href.replace('www.gitcoin.co', 'gitcoin.co');
+    const url = new URL(document.location.href);
+
+    if (url.host == 'www.gitcoin.co') {
+      const new_url = document.location.href.replace('www.gitcoin.co', 'gitcoin.co');
 
       document.location.href = new_url;
     }
@@ -153,7 +150,7 @@ document.addEventListener('DOMContentLoaded', function() {
   var $top_nav_notif = $('#top_nav_notification');
   var top_nav_salt = document.nav_salt;
   var remove_top_row = function() {
-    $top_nav_notif.parents('.row').remove();
+    $top_nav_notif.parents('.bottom_notification').remove();
     localStorage['top_nav_notification_remove_' + top_nav_salt] = true;
   };
 
@@ -161,7 +158,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (top_nav_salt == 0 || localStorage['top_nav_notification_remove_' + top_nav_salt]) {
     remove_top_row();
   } else {
-    $top_nav_notif.parents('.row').removeClass('d-none');
+    $top_nav_notif.parents('.bottom_notification').removeClass('d-none');
   }
   $top_nav_notif.click(remove_top_row);
 
@@ -425,20 +422,6 @@ this.gitcoinUpdates = () => {
 
 };
 
-this.applyCartMenuStyles = function() {
-  let dot = $('#cart-notification-dot');
-
-  if (CartData.hasItems()) {
-    dot.addClass('notification__dot_active');
-    dot.text(CartData.length());
-  } else {
-    dot.removeClass('notification__dot_active');
-    if (document.location.href.indexOf('/grants') == -1) {
-      $('#cart-nav').addClass('hidden');
-    }
-  }
-};
-
 // Turn form data pulled form page into a JS object
 this.objectifySerialized = function(data) {
   let objectData = {};
@@ -451,3 +434,28 @@ this.objectifySerialized = function(data) {
 
   return objectData;
 };
+
+
+window.onscroll = function() {
+  scrollFunction();
+};
+
+const backToTop = () => {
+  document.body.scrollTop = 0;
+  document.documentElement.scrollTop = 0;
+};
+
+const scrollFunction = () => {
+  let scrollBackToTop = document.getElementById('btn-back-to-top');
+
+  if (
+    document.body.scrollTop > 20 ||
+    document.documentElement.scrollTop > 20
+  ) {
+    scrollBackToTop.style.display = 'block';
+  } else {
+    scrollBackToTop.style.display = 'none';
+  }
+};
+
+document.getElementById('btn-back-to-top').addEventListener('click', backToTop);

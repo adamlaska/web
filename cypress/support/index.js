@@ -14,6 +14,7 @@
 // ***********************************************************
 
 // Import commands.js using ES2015 syntax:
+require('cypress-grep')();
 import './commands';
 
 // Alternatively you can use CommonJS syntax:
@@ -24,3 +25,4 @@ Cypress.on('uncaught:exception', (err, runnable) => {
   // failing the test
   return false;
 });
+

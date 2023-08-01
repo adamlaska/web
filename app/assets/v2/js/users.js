@@ -175,11 +175,12 @@ Vue.mixin({
 
       vm.errorIssueDetails = undefined;
 
-      if (url.indexOf('github.com/') < 0) {
+      if (new URL(url).host != 'github.com') {
         vm.issueDetails = null;
         vm.errorIssueDetails = 'Please paste a github issue url';
         return;
       }
+
       vm.issueDetails = undefined;
       const getIssue = fetchData(apiUrldetails, 'GET');
 
@@ -375,12 +376,6 @@ if (document.getElementById('gc-users-directory')) {
       hideFilterButton: !!document.getElementById('explore_tribes')
     },
     mounted() {
-      const params = new URLSearchParams(window.location.search);
-
-      if (params.has('ptokens')) {
-        this.$set(this.params, 'only_with_token', true);
-      }
-
       this.fetchUsers();
       this.$watch('params', function(newVal, oldVal) {
         this.searchUsers();

@@ -25,7 +25,7 @@ from avatar.utils import get_user_github_avatar_image
 from geoip2.errors import AddressNotFoundError
 from git.utils import get_user
 from ipware.ip import get_real_ip
-from marketing.utils import get_or_save_email_subscriber
+from marketing.common.utils import get_or_save_email_subscriber
 from social_core.backends.github import GithubOAuth2
 from social_django.models import UserSocialAuth
 
@@ -110,6 +110,7 @@ def actually_sync_profile(handle, user=None, hide_profile=True):
                 user.save()
                 profile.handle = data.login
                 profile.email = user.email
+                profile.email_index = user.email.lower()
                 profile.save()
 
         except Exception as e:
@@ -133,6 +134,7 @@ def actually_sync_profile(handle, user=None, hide_profile=True):
             defaults['github_access_token'] = user.social_auth.filter(provider='github').latest('pk').access_token
             if user and user.email:
                 defaults['email'] = user.email
+                defaults['email_index'] = user.email.lower()
         except UserSocialAuth.DoesNotExist:
             pass
 
@@ -395,13 +397,7 @@ def notion_write(database_id='', payload=None):
     # write to the pages api (https://developers.notion.com/reference/post-page)
     url = "https://api.notion.com/v1/pages"
     # define the parent (database) that we're writing to and set the properties (row content)
-    body = {
-        "parent": {
-            "type": "database_id",
-            "database_id": database_id
-        },
-        "properties": payload
-    }
+    body = {"parent": {"type": "database_id", "database_id": database_id}, "properties": payload}
 
     # return success as dict
     return notion_api_call(url, body)
@@ -432,4 +428,12 @@ def notion_api_call(url='', payload=None):
         raise Exception("Failed to set to/get from notion")
 
     # return success as dict
+    return response
+
+
+def allow_all_origins(response):
+    """Pass in a response and add header to allow all CORs requests"""
+
+    response["Access-Control-Allow-Origin"] = "*"
+
     return response

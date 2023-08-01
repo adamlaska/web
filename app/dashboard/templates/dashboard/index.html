@@ -82,7 +82,7 @@
         {% endif %}
         <div id="{{ hackathon.identifier }}" class="d-flex justify-content-between flex-column flex-md-row align-items-center p-3 banner hackathon-banner">
           <div class="offset-2 hackathon-text pl-4">
-            <div class="">
+            <div>
               <p class="hackathon-title title font-weight-bold mb-0">GITCOIN VIRTUAL HACKATHON</p>
             </div>
             <p class="mb-1">
@@ -180,7 +180,7 @@
       <div id="onboard-footer" class="row hidden font-body position-absolute">
         <div class="col-12">
           <p>{% trans "Want to Fund an issue ? " %}
-            <a target="_blank" rel="noopener noreferrer" href="{% url "new_funding_short" %}">{% trans "Get Started!" %}</a>
+            <a target="_blank" rel="noopener noreferrer" href="{% url 'new_bounty' %}">{% trans "Get Started!" %}</a>
           </p>
         </div>
       </div>

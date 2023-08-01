@@ -27,12 +27,6 @@ generate:
     - avatar.views++
   - avatar/templatetags.md:
     - avatar.templatetags.avatar_tags++
-  - bounty_requests/admin.md:
-    - bounty_requests.admin++
-  - bounty_requests/models.md:
-    - bounty_requests.models++
-  - bounty_requests/views.md:
-    - bounty_requests.views++
   - credits/views.md:
     - credits.views++
   - dashboard/admin.md:
@@ -75,12 +69,6 @@ generate:
     - economy.models++
   - economy/utils.md:
     - economy.utils++
-  - faucet/admin.md:
-    - faucet.admin++
-  - faucet/models.md:
-    - faucet.models++
-  - faucet/views.md:
-    - faucet.views++
   - gas/admin.md:
     - gas.admin++
   - gas/models.md:
@@ -140,11 +128,9 @@ generate:
   - marketing/commands.md:
     - marketing.management.commands.assemble_leaderboards++
     - marketing.management.commands.backfill_analytics++
-    - marketing.management.commands.bounty_feedback_email++
     - marketing.management.commands.expiration_start_work++
     - marketing.management.commands.expiration_tip++
     - marketing.management.commands.expiration++
-    - marketing.management.commands.funder_stale_email++
     - marketing.management.commands.gdpr_reconsent_eu++
     - marketing.management.commands.gdpr_update_email++
     - marketing.management.commands.new_bounties_email++
@@ -152,14 +138,12 @@ generate:
     - marketing.management.commands.process_email_events++
     - marketing.management.commands.pull_github++
     - marketing.management.commands.pull_stats++
-    - marketing.management.commands.remarket_bounties++
     - marketing.management.commands.roundup++
     - marketing.management.commands.send_quarterly_stats++
     - marketing.management.commands.sync_github++
     - marketing.management.commands.sync_keywords++
     - marketing.management.commands.sync_mail++
     - marketing.management.commands.sync_slack++
-    - marketing.management.commands.debug_test++
   - marketing/admin.md:
     - marketing.admin++
   - marketing/mails.md:
@@ -168,8 +152,8 @@ generate:
     - marketing.models++
   - marketing/stats.md:
     - marketing.stats++
-  - marketing/utils.md:
-    - marketing.utils++
+  - marketing/common/utils.md:
+    - marketing.common.utils++
   - marketing/views.md:
     - marketing.views++
   - marketing/webbhookviews.md:
@@ -226,10 +210,6 @@ pages:
       - Utilities: avatar/utils.md
       - Views: avatar/views.md
       - Template Tags: avatar/templatetags.md
-    - Bounty Requests:
-      - Admin: bounty_requests/admin.md
-      - Models: bounty_requests/models.md
-      - Views: bounty_requests/views.md
     - Credits:
       - Views: credits/views.md
     - Dashboard:
@@ -254,10 +234,6 @@ pages:
       - Admin: economy/admin.md
       - Models: economy/models.md
       - Utilities: economy/utils.md
-    - Faucet:
-      - Admin: faucet/admin.md
-      - Models: faucet/models.md
-      - Views: faucet/views.md
     - Gas:
       - Admin: gas/admin.md
       - Models: gas/models.md

@@ -41,6 +41,7 @@ from dashboard.sync.binance import sync_binance_payout
 from dashboard.sync.btc import sync_btc_payout
 from dashboard.sync.casper import sync_casper_payout
 from dashboard.sync.celo import sync_celo_payout
+from dashboard.sync.cosmos import sync_cosmos_payout
 from dashboard.sync.etc import sync_etc_payout
 from dashboard.sync.eth import sync_eth_payout
 from dashboard.sync.filecoin import sync_filecoin_payout
@@ -65,7 +66,6 @@ from web3.exceptions import BadFunctionCallOutput
 from web3.middleware import geth_poa_middleware
 
 from .abi import erc20_abi
-from .notifications import maybe_market_to_slack
 
 logger = logging.getLogger(__name__)
 
@@ -285,7 +285,7 @@ def ipfs_cat_requests(key):
         return None, 500
 
 
-def get_web3(network, sockets=False):
+def get_web3(network, sockets=False, chain='std'):
     """Get a Web3 session for the provided network.
 
     Attributes:
@@ -299,8 +299,13 @@ def get_web3(network, sockets=False):
         web3.main.Web3: A web3 instance for the provided network.
 
     """
-    if network in ['mainnet', 'rinkeby', 'ropsten']:
-        if sockets:
+    if network in ['mainnet', 'rinkeby', 'ropsten', 'testnet']:
+        if network == 'mainnet' and chain == 'polygon':
+            network = 'polygon-mainnet'
+        elif network == 'testnet':
+            network = 'polygon-mumbai'
+
+        if sockets and chain != 'polygon': # polygon doesn't yet have socket support in infura
             if settings.INFURA_USE_V3:
                 provider = WebsocketProvider(f'wss://{network}.infura.io/ws/v3/{settings.INFURA_V3_PROJECT_ID}')
             else:
@@ -310,6 +315,10 @@ def get_web3(network, sockets=False):
                 provider = HTTPProvider(f'https://{network}.infura.io/v3/{settings.INFURA_V3_PROJECT_ID}')
             else:
                 provider = HTTPProvider(f'https://{network}.infura.io')
+        
+        # Infura is throwing 403 errors on polygon due to current plan. Using Polygon RPC instead
+        if network == 'polygon-mainnet':
+            provider = HTTPProvider(f'https://polygon-mainnet.g.alchemy.com/v2/{settings.ALCHEMY_KEY}')
 
         w3 = Web3(provider)
         if network == 'rinkeby':
@@ -331,7 +340,7 @@ def get_graphql_client(uri):
     """Get a graphQL client attached to the given uri
 
     Returns:
-        GraphQLClient: an established GraphQLClient assoicated with the given uri
+        GraphQLClient: an established GraphQLClient associated with the given uri
     """
 
     # memoize
@@ -675,6 +684,9 @@ def sync_payout(fulfillment):
     elif fulfillment.payout_type == 'casper_ext':
         sync_casper_payout(fulfillment)
 
+    elif fulfillment.payout_type == 'cosmos_ext':
+        sync_cosmos_payout(fulfillment)
+
 
 def get_bounty_id(issue_url, network):
     issue_url = normalize_url(issue_url)
@@ -806,8 +818,8 @@ def record_funder_inaction_on_fulfillment(bounty_fulfillment):
             'needs_review': True
         }
     }
-    Activity.objects.create(activity_type='bounty_abandonment_escalation_to_mods', bounty=bounty_fulfillment.bounty, **payload)
-
+    activity = Activity.objects.create(activity_type='bounty_abandonment_escalation_to_mods', bounty=bounty_fulfillment.bounty, **payload)
+    activity.populate_activity_index()
 
 def record_user_action_on_interest(interest, event_name, last_heard_from_user_days):
     """Record User actions and activity for the associated Interest."""
@@ -824,7 +836,8 @@ def record_user_action_on_interest(interest, event_name, last_heard_from_user_da
     if event_name in ['bounty_abandonment_escalation_to_mods', 'bounty_abandonment_warning']:
         payload['needs_review'] = True
 
-    Activity.objects.create(activity_type=event_name, bounty=interest.bounty_set.last(), **payload)
+    activity = Activity.objects.create(activity_type=event_name, bounty=interest.bounty_set.last(), **payload)
+    activity.populate_activity_index()
 
 
 def get_context(ref_object=None, github_username='', user=None, confirm_time_minutes_target=4,
@@ -926,12 +939,12 @@ def is_valid_eth_address(eth_address):
     return (bool(re.match(r"^0x[a-zA-Z0-9]{40}$", eth_address)) or eth_address == "0x0")
 
 
-def get_tx_status(txid, network, created_on):
-    status, timestamp, tx = get_tx_status_and_details(txid, network, created_on)
+def get_tx_status(txid, network, created_on, chain='std'):
+    status, timestamp, tx = get_tx_status_and_details(txid, network, created_on, chain=chain)
     return status, timestamp
 
 
-def get_tx_status_and_details(txid, network, created_on):
+def get_tx_status_and_details(txid, network, created_on, chain='std'):
     from django.utils import timezone
 
     import pytz
@@ -945,7 +958,7 @@ def get_tx_status_and_details(txid, network, created_on):
     if txid == 'override':
         return 'success', None #overridden by admin
     try:
-        web3 = get_web3(network)
+        web3 = get_web3(network, chain=chain)
         tx = web3.eth.getTransactionReceipt(txid)
         if not tx:
             drop_dead_date = created_on + timezone.timedelta(days=DROPPED_DAYS)
@@ -982,10 +995,12 @@ def get_tx_status_and_details(txid, network, created_on):
 
 def is_blocked(handle):
     # check admin block list
-    is_on_blocked_list = BlockedUser.objects.filter(handle__icontains=handle, active=True).exists()
+    is_on_blocked_list = BlockedUser.objects.filter(handle=handle.lower(), active=True).exists()
     if is_on_blocked_list:
         return True
+    return False
 
+def should_be_blocked(handle):
     # check banned country list
     profiles = Profile.objects.filter(handle=handle.lower())
     if profiles.exists():
@@ -1053,8 +1068,6 @@ def re_market_bounty(bounty, auto_save = True):
 
             if auto_save:
                 bounty.save()
-
-            maybe_market_to_slack(bounty, 'issue_remarketed')
 
             result_msg = 'The issue will appear at the top of the issue explorer. '
             further_permitted_remarket_count = settings.RE_MARKET_LIMIT - bounty.remarketed_count
@@ -1149,7 +1162,7 @@ def get_all_urls():
 
 def get_url_first_indexes():
 
-    return ['_administration','about','action','actions','activity','api','avatar','blog','bounties','bounty','btctalk','casestudies','casestudy','chat','community','contributor','contributor_dashboard','credit','dashboard','docs','dynamic','explorer','extension','faucet','fb','feedback','funder','funder_dashboard','funding','gas','ghlogin','github','gitter','grant','grants','hackathon','hackathonlist','hackathons','health','help','home','how','impersonate','inbox','interest','issue','itunes','jobs','jsi18n','kudos','l','labs','landing','lazy_load_kudos','lbcheck','leaderboard','legacy','legal','livestream','login','logout','mailing_list','medium','mission','modal','new','not_a_token','o','onboard','podcast','postcomment','press','presskit','products','profile','quests','reddit','refer','register_hackathon','requestincrease','requestmoney','requests','results','revenue','robotstxt','schwag','send','service','settings','sg_sendgrid_event_processor','sitemapsectionxml','sitemapxml','slack','spec','strbounty_network','submittoken','sync','terms','tip','townsquare','tribe','tribes','twitter','users','verified','vision','wallpaper','wallpapers','web3','whitepaper','wiki','wikiazAZ09azdAZdazd','youtube']
+    return ['_administration','about','action','actions','activity','api','avatar','blog','bounties','bounty','btctalk','casestudies','casestudy','chat','community','contributor','contributor_dashboard','credit','dashboard','docs','dynamic','explorer','extension','fb','feedback','funder','funder_dashboard','funding','gas','ghlogin','github','gitter','grant','grants','hackathon','hackathonlist','hackathons','health','help','home','how','impersonate','inbox','interest','issue','itunes','jobs','jsi18n','kudos','l','labs','landing','lazy_load_kudos','lbcheck','leaderboard','legacy','legal','livestream','login','logout','mailing_list','medium','mission','modal','new','not_a_token','o','onboard','podcast','postcomment','press','presskit','products','profile','quests','reddit','refer','register_hackathon','requestincrease','requestmoney','requests','results','revenue','robotstxt','schwag','send','service','settings','sg_sendgrid_event_processor','sitemapsectionxml','sitemapxml','slack','spec','strbounty_network','submittoken','sync','terms','tip','townsquare','tribe','tribes','twitter','users','verified','vision','wallpaper','wallpapers','web3','whitepaper','wiki','wikiazAZ09azdAZdazd','youtube']
     # TODO: figure out the recursion issue with the URLs at a later date
     # or just cache them in the backend dynamically
 
@@ -1265,3 +1278,18 @@ def tx_id_to_block_explorer_url(txid, network):
     if network == 'mainnet':
         return f"https://etherscan.io/tx/{txid}"
     return f"https://{network}.etherscan.io/tx/{txid}"
+
+
+def add_param_to_querySet(key, queryset, queryParams):
+    val = queryParams.get(key, '')
+    values = val.strip().split(',')
+    values = [value for value in values if value and val.strip()]
+    if values:
+        _queryset = queryset.none()
+        for value in values:
+            args = {}
+            args[f'{key}'] = value.strip().lower()
+            _queryset = _queryset | queryset.filter(**args)
+        queryset = _queryset
+
+    return queryset

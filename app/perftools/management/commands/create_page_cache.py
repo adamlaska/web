@@ -24,12 +24,11 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
-from app.services import RedisService
 from avatar.models import AvatarTheme, CustomAvatar
 from dashboard.models import Activity, HackathonEvent, Profile
 from dashboard.utils import set_hackathon_event
 from economy.models import EncodeAnything
-from grants.models import Contribution, Grant, GrantCategory, GrantType
+from grants.models import Contribution, Grant, GrantType
 from grants.utils import get_clr_rounds_metadata
 from marketing.models import Stat
 from perftools.models import JSONStore
@@ -90,9 +89,9 @@ def create_grant_active_clr_mapping():
     # waits 14 days from removing them tho
     from grants.models import GrantCLRCalculation
     from_date = timezone.now() - timezone.timedelta(days=14)
-    gclrs = GrantCLRCalculation.objects.filter(latest=True, grantclr__is_active=False, grantclr__end_date__lt=from_date)
+    gclrs = GrantCLRCalculation.objects.filter(active=True, grantclr__is_active=False, grantclr__end_date__lt=from_date)
     for gclr in gclrs:
-        gclr.latest = False
+        gclr.active = False
         gclr.save()
         grant = gclr.grant
         grant.calc_clr_round()
@@ -107,22 +106,12 @@ def create_hack_event_cache():
         he.save()
 
 
-def create_grant_category_size_cache():
-    print('create_grant_category_size_cache')
-    grant_types = GrantType.objects.all()
-    redis = RedisService().redis
-    for g_type in grant_types:
-        for category in GrantCategory.objects.all():
-            key = f"grant_category_{g_type.name}_{category.category}"
-            val = Grant.objects.filter(active=True, hidden=False, grant_type=g_type, categories__category__contains=category.category).count()
-            redis.set(key, val)
-
-
 def create_top_grant_spenders_cache():
 
-    _, round_start_date, _, _ = get_clr_rounds_metadata()
+    round_start_date = get_clr_rounds_metadata()['round_start_date']
 
     grant_types = GrantType.objects.filter(is_visible=True, is_active=True)
+
     for grant_type in grant_types:
         contributions = Contribution.objects.filter(
             success=True,
@@ -235,31 +224,31 @@ def create_avatar_cache():
         at.save()
 
 
-def create_activity_cache():
-    hours = 24 if not settings.DEBUG else 1000
+# def create_activity_cache():
+#     hours = 24 if not settings.DEBUG else 1000
 
-    print('activity.1')
-    view = 'activity'
-    keyword = '24hcount'
-    data = Activity.objects.filter(created_on__gt=timezone.now() - timezone.timedelta(hours=hours)).count()
-    JSONStore.objects.filter(view=view, key=keyword).all().delete()
-    JSONStore.objects.create(
-        view=view,
-        key=keyword,
-        data=json.loads(json.dumps(data, cls=EncodeAnything)),
-        )
+#     print('activity.1')
+#     view = 'activity'
+#     keyword = '24hcount'
+#     activity_count = Activity.objects.filter(created_on__gt=timezone.now() - timezone.timedelta(hours=hours)).count()
+#     JSONStore.objects.filter(view=view, key=keyword).all().delete()
+#     JSONStore.objects.create(
+#         view=view,
+#         key=keyword,
+#         data=json.loads(json.dumps(activity_count, cls=EncodeAnything)),
+#         )
 
-    print('activity.2')
+#     print('activity.2')
 
-    for tag in tags:
-        keyword = tag[2]
-        data = get_specific_activities(keyword, False, None, None).filter(created_on__gt=timezone.now() - timezone.timedelta(hours=hours)).count()
-        JSONStore.objects.filter(view=view, key=keyword).all().delete()
-        JSONStore.objects.create(
-            view=view,
-            key=keyword,
-            data=json.loads(json.dumps(data, cls=EncodeAnything)),
-            )
+#     for tag in tags:
+#         keyword = tag[2]
+#         data = get_specific_activities(keyword, False, None, None, page=1, page_size=activity_count).filter(created_on__gt=timezone.now() - timezone.timedelta(hours=hours)).count()
+#         JSONStore.objects.filter(view=view, key=keyword).all().delete()
+#         JSONStore.objects.create(
+#             view=view,
+#             key=keyword,
+#             data=json.loads(json.dumps(data, cls=EncodeAnything)),
+#             )
 
 
 def create_quests_cache():
@@ -291,7 +280,7 @@ def create_hackathon_list_page_cache():
     view = 'hackathons'
     keyword = 'hackathons'
     current_hackathon_events = HackathonEvent.objects.current().filter(visible=True).order_by('-start_date')
-    upcoming_hackathon_events = HackathonEvent.objects.upcoming().filter(visible=True).order_by('-start_date')
+    upcoming_hackathon_events = HackathonEvent.objects.upcoming().filter(visible=True).order_by('start_date')
     finished_hackathon_events = HackathonEvent.objects.finished().filter(visible=True).order_by('-start_date')
 
     events = []
@@ -340,6 +329,8 @@ def create_results_cache():
             print(f"- executing {keyword}")
             data = build_stat_results(keyword)
             print("- creating")
+            if 'hackathons' in data:
+                    del data['hackathons']
             items.append(JSONStore(
                 view=view,
                 key=keyword,
@@ -378,14 +369,13 @@ class Command(BaseCommand):
         operations.append(create_grant_active_clr_mapping)
         operations.append(create_grant_type_cache)
         operations.append(create_grant_clr_cache)
-        operations.append(create_grant_category_size_cache)
 
         if not settings.DEBUG:
             operations.append(create_results_cache)
             operations.append(create_hack_event_cache)
             operations.append(create_hidden_profiles_cache)
             operations.append(create_tribes_cache)
-            operations.append(create_activity_cache)
+            # operations.append(create_activity_cache)
             operations.append(create_post_cache)
             operations.append(create_top_grant_spenders_cache)
             operations.append(create_avatar_cache)

@@ -36,8 +36,8 @@ import cssutils
 import premailer
 from app.utils import get_default_network
 from grants.models import Contribution, Grant, Subscription
+from marketing.common.utils import get_or_save_email_subscriber
 from marketing.models import LeaderboardRank
-from marketing.utils import get_or_save_email_subscriber
 from retail.utils import build_utm_tracking, strip_double_chars, strip_html
 
 logger = logging.getLogger(__name__)
@@ -57,14 +57,14 @@ MARKETING_EMAILS = [
 
 TRANSACTIONAL_EMAILS = [
     ('tip', _('Tip Emails'), _('Only when you are sent a tip')),
-    ('faucet', _('Faucet Notification Emails'), _('Only when you are sent a faucet distribution')),
     ('bounty', _('Bounty Notification Emails'), _('Only when you\'re active on a bounty')),
     ('bounty_match', _('Bounty Match Emails'), _('Only when you\'ve posted a open bounty and you have a new match')),
-    ('bounty_feedback', _('Bounty Feedback Emails'), _('Only after a bounty you participated in is finished.')),
     (
         'bounty_expiration', _('Bounty Expiration Warning Emails'),
         _('Only after you posted a bounty which is going to expire')
     ),
+    ('export_data', _('Export Data Emails'), _('Only when you have exported contribution or spending data')),
+    ('export_data_failed', _('Export Data Failed Emails'), _('Only when you have tried to export contribution or spending data but the process has failed.')),
     ('featured_funded_bounty', _('Featured Funded Bounty Emails'), _('Only when you\'ve paid for a bounty to be featured')),
     ('comment', _('Comment Emails'), _('Only when you are sent a comment')),
     ('wall_post', _('Wall Post Emails'), _('Only when someone writes on your wall')),
@@ -90,6 +90,24 @@ def premailer_transform(html):
     cssutils.log.setLevel(logging.CRITICAL)
     p = premailer.Premailer(html, base_url=settings.BASE_URL)
     return p.transform()
+
+
+def render_export_data_email(user_profile):
+    params = {'profile': user_profile}
+    response_html = premailer_transform(render_to_string("emails/export_data.html", params))
+    response_txt = render_to_string("emails/export_data.txt", params)
+    subject = _("Your Gitcoin CSV Download")
+
+    return response_html, response_txt, subject
+
+
+def render_export_data_email_failed(user_profile):
+    params = {'profile': user_profile}
+    response_html = premailer_transform(render_to_string("emails/export_data_failed.html", params))
+    response_txt = render_to_string("emails/export_data_failed.txt", params)
+    subject = _("Your CSV Download Has Failed")
+
+    return response_html, response_txt, subject
 
 
 def render_featured_funded_bounty(bounty):
@@ -121,29 +139,69 @@ def render_new_contributions_email(grant):
     hours_ago = 12
     network = get_default_network()
     contributions = grant.contributions.filter(
+        success=True,
+        tx_cleared=True,
         created_on__gt=timezone.now() - timezone.timedelta(hours=hours_ago),
         subscription__network=network
     )
     amount_raised = sum(contributions.values_list('normalized_data__amount_per_period_usdt', flat=True))
     num_of_contributors = len(set(contributions.values_list('profile_for_clr', flat=True)))
 
+    # amount raised in L2/sidechains
+    amount_raised_zksync = sum(
+        contributions.filter(checkout_type='eth_zksync').values_list(
+            'normalized_data__amount_per_period_usdt', flat=True
+        )
+    )
+    amount_raised_polygon = sum(
+        contributions.filter(checkout_type='eth_polygon').values_list(
+            'normalized_data__amount_per_period_usdt', flat=True
+        )
+    )
+
     params = {
         'grant': grant,
         'hours_ago': hours_ago,
         'amount_raised': amount_raised,
+        'amount_raised_zksync': amount_raised_zksync,
+        'amount_raised_polygon': amount_raised_polygon,
+        'show_zksync_amount': False if amount_raised_zksync < 1 else True,
+        'show_polygon_amount': False if amount_raised_polygon < 1 else True,
         'num_of_contributors': num_of_contributors,
         'media_url': settings.MEDIA_URL,
+        'contributions': contributions,
         'utm_tracking': build_utm_tracking('new_contributions'),
     }
     response_html = premailer_transform(render_to_string("emails/grants/new_contributions.html", params))
     response_txt = render_to_string("emails/grants/new_contributions.txt", params)
-    subject = _("You have new Grant contributions!")
+    subject = f"You have {contributions.count()} new Grant contributions worth ${round(amount_raised, 2)}!"
+
+    if amount_raised < 1:
+        # trigger to prevent email sending for negligible amounts
+        subject = ''
+
     return response_html, response_txt, subject
 
 
 def render_thank_you_for_supporting_email(grants_with_subscription):
+    totals = {}
+    total_match_amount = 0
+    match_token = 'DAI'
+    for gws in grants_with_subscription:
+        key = gws['subscription'].token_symbol
+        val = float(gws['subscription'].amount_per_period)
+        if key not in totals.keys():
+            totals[key] = 0
+        totals[key] += float(val)
+        match_amount = float(gws.normalized_data['match_amount_when_contributed'])
+        total_match_amount += match_amount if match_amount else float(gws['subscription'].match_amount)
+        match_token = gws['subscription'].match_amount_token
+
     params = {
         'grants_with_subscription': grants_with_subscription,
+        "totals": totals,
+        'total_match_amount': total_match_amount,
+        'match_token': match_token,
         'utm_tracking': build_utm_tracking('thank_you_for_supporting_email'),
     }
     response_html = premailer_transform(render_to_string("emails/grants/thank_you_for_supporting.html", params))
@@ -251,12 +309,15 @@ def support_cancellation(request):
 
 @staff_member_required
 def thank_you_for_supporting(request):
-    grant = Grant.objects.first()
-    subscription = Subscription.objects.filter(grant__pk=grant.pk).first()
-    grant_with_subscription = [{
-        'grant': grant,
-        'subscription': subscription
-    }]
+    grant_with_subscription = []
+    for i in range(0, 10):
+        grant = Grant.objects.order_by('?').first()
+        subscription = Subscription.objects.filter(grant__pk=grant.pk).last()
+        if subscription:
+            grant_with_subscription.append({
+                'grant': grant,
+                'subscription': subscription
+            })
     response_html, __, __ = render_thank_you_for_supporting_email(grant_with_subscription)
     return HttpResponse(response_html)
 
@@ -458,6 +519,21 @@ def render_funder_payout_reminder(**kwargs):
     return response_html, response_txt
 
 
+def render_grant_match_distribution_final_txn(match):
+    params = {
+        'round_number': match.round_number,
+        'token_symbol': match.token.symbol,
+        'rounded_amount': round(match.token_amount, 2),
+        'profile_handle': match.grant.admin_profile.handle,
+        'grant_url': f'https://gitcoin.co{match.grant.get_absolute_url()}',
+        'grant': match.grant,
+        'utm_tracking': build_utm_tracking('clr_match_claim'),
+    }
+    response_html = premailer_transform(render_to_string("emails/grants/clr_match_claim.html", params))
+    response_txt = render_to_string("emails/grants/clr_match_claim.txt", params)
+    return response_html, response_txt
+
+
 def render_match_distribution(mr):
     params = {
         'mr': mr,
@@ -479,91 +555,6 @@ def render_no_applicant_reminder(bounty):
     return response_html, response_txt
 
 
-def render_bounty_feedback(bounty, persona='submitter', previous_bounties=[]):
-    if persona == 'fulfiller':
-        accepted_fulfillments = bounty.fulfillments.filter(accepted=True)
-        github_username = " @" + accepted_fulfillments.first().fulfiller_github_username if accepted_fulfillments.exists() and accepted_fulfillments.first().fulfiller_github_username else ""
-        txt = f"""
-hi{github_username},
-
-thanks for turning around this bounty. we're hyperfocused on making Gitcoin a great place for blockchain developers to hang out, learn new skills, and git coins.
-
-in that spirit, we have a few questions for you.
-
-> what would you say your average hourly rate was for this bounty? {bounty.github_url}
-
-> what was the best thing about working on the platform? what was the worst?
-
-> would you use Gitcoin again?
-
-thanks again for being a member of the community.
-
-kyle, frank & alisa (gitcoin product team)
-
-PS - we've got some new gitcoin schwag on order. if you are intersted, you can use discount code product-feedback-is-a-gift for 50% off your order :).
-
-"""
-    elif persona == 'funder':
-        github_username = " @" + bounty.bounty_owner_github_username if bounty.bounty_owner_github_username else ""
-        if bounty.status == 'done':
-            txt = f"""
-
-hi{github_username},
-
-thanks for putting this bounty ({bounty.github_url}) on Gitcoin.  i'm glad to see it was turned around.
-
-we're hyperfocused on making Gitcoin a great place for blockchain developers to hang out, learn new skills, and git some coins.
-
-in that spirit, we have a few questions for you:
-
-> how much coaching/communication did it take the counterparty to turn around the issue? was this burdensome?
-
-> what was the best thing about working on the platform? what was the worst?
-
-> would you use gitcoin again?
-
-thanks for being a member of the community.
-
-kyle, frank & alisa (gitcoin product team)
-
-PS - we've got some new gitcoin schwag on order. if you are intersted, you can use discount code product-feedback-is-a-gift for 50% off your order :)
-
-"""
-        elif bounty.status == 'cancelled':
-            txt = f"""
-hi{github_username},
-
-we saw that you cancelled this bounty.
-
-we are sorry to see that the bounty did not get done.
-
-we have a few questions for you.
-
-> why did you decide to cancel the bounty?
-
-> would you use gitcoin again?
-
-thanks again for being a member of the community.
-
-kyle, frank & alisa (gitcoin product team)
-
-PS - we've got some new gitcoin schwag on order. if you are intersted, you can use discount code product-feedback-is-a-gift for 50% off your order :)
-
-"""
-        else:
-            raise Exception('unknown bounty status')
-    else:
-        raise Exception('unknown persona')
-
-    params = {
-        'txt': txt,
-		'email_type': 'bounty_feedback'
-    }
-    response_txt = premailer_transform(render_to_string("emails/txt.html", params))
-    response_html = f"<pre>{response_txt}</pre>"
-
-    return response_html, response_txt
-
 
 def render_admin_contact_funder(bounty, text, from_user):
     txt = f"""
@@ -583,45 +574,6 @@ def render_admin_contact_funder(bounty, text, from_user):
 
     return response_html, response_txt
 
-
-def render_funder_stale(github_username, days=60, time_as_str='a couple months'):
-    """Render the stale funder email template.
-
-    Args:
-        github_username (str): The Github username to be referenced in the email.
-        days (int): The number of days back to reference.
-        time_as_str (str): The human readable length of time to reference.
-
-    Returns:
-        str: The rendered response as a string.
-
-    """
-    github_username = f"@{github_username}" if github_username else "there"
-    response_txt = f"""
-hi {github_username},
-
-kyle, frank, and alisa from Gitcoin here — i see you haven't funded an issue in {time_as_str}.
-
-in the spirit of making Gitcoin better + checking in:
-
-> do you have any issues which might be bounty worthy or projects you're hoping to build?
-
-> do you have any feedback for us on how we might improve the product to fit your needs?
-
-> are you interested in hosting or partnering in one of our upcoming hackathons? this is often teh best way to get top talent working on your issues.
-
-appreciate you being a part of the community + if you are intersted, you can use discount code product-feedback-is-a-gift for 50% off your order :)
-
-~ kyle, frank & alisa (gitcoin product team)
-
-
-"""
-
-    params = {'txt': response_txt}
-    response_html = premailer_transform(render_to_string("emails/txt.html", params))
-    return response_html, response_txt
-
-
 def get_notification_count(profile, days_ago, from_date):
     from_date = from_date + timedelta(days=1)
     to_date = from_date - timedelta(days=days_ago)
@@ -640,13 +592,13 @@ def get_notification_count(profile, days_ago, from_date):
 def email_to_profile(to_email):
     from dashboard.models import Profile
     try:
-        profile = Profile.objects.filter(email__iexact=to_email).last()
+        profile = Profile.objects.filter(email_index=to_email.lower()).last()
     except Profile.DoesNotExist:
         pass
     return profile
 
 
-def render_new_bounty(to_email, bounties, old_bounties, offset=3, quest_of_the_day={}, upcoming_grant={}, hackathons=(), latest_activities={}, from_date=date.today(), days_ago=7, chats_count=0, featured_bounties=[]):
+def render_new_bounty(to_email, bounties, old_bounties, offset=3, quest_of_the_day={}, upcoming_grant={}, hackathons=(), from_date=date.today(), days_ago=7, chats_count=0, featured_bounties=[]):
     from dateutil.parser import parse
     from marketing.views import email_announcements, trending_avatar
 
@@ -689,7 +641,6 @@ def render_new_bounty(to_email, bounties, old_bounties, offset=3, quest_of_the_d
         'quest_of_the_day': quest_of_the_day,
         'current_hackathons': current_hackathons,
         'upcoming_hackathons': upcoming_hackathons,
-        'activities': latest_activities,
         'notifications_count': notifications_count,
         'chats_count': chats_count,
     }
@@ -711,7 +662,7 @@ def render_unread_notification_email_weekly_roundup(to_email, from_date=date.tod
     subscriber = get_or_save_email_subscriber(to_email, 'internal')
     from dashboard.models import Profile
     from inbox.models import Notification
-    profile = Profile.objects.filter(email__iexact=to_email).last()
+    profile = Profile.objects.filter(email_index=to_email.lower()).last()
 
     from_date = from_date + timedelta(days=1)
     to_date = from_date - timedelta(days=days_ago)
@@ -736,7 +687,7 @@ def render_unread_notification_email_weekly_roundup(to_email, from_date=date.tod
 def render_weekly_recap(to_email, from_date=date.today(), days_back=7):
     sub = get_or_save_email_subscriber(to_email, 'internal')
     from dashboard.models import Profile
-    prof = Profile.objects.filter(email__iexact=to_email).last()
+    prof = Profile.objects.filter(email_index=to_email.lower()).last()
     bounties = prof.bounties.all()
     from_date = from_date + timedelta(days=1)
     to_date = from_date - timedelta(days=days_back)
@@ -1070,8 +1021,6 @@ def render_bounty_changed(to_email, bounty):
 
 
 def render_bounty_expire_warning(to_email, bounty):
-    from django.db.models.functions import Lower
-
     unit = 'days'
     num = int(round((bounty.expires_date - timezone.now()).days, 0))
     if num == 0:
@@ -1127,37 +1076,6 @@ def render_bounty_unintersted(to_email, bounty, interest):
     return response_html, response_txt
 
 
-def render_faucet_rejected(fr):
-
-    params = {
-        'fr': fr,
-        'amount': settings.FAUCET_AMOUNT,
-        'utm_tracking': build_utm_tracking('faucet_rejected'),
-        'subscriber': get_or_save_email_subscriber(fr.email, 'internal'),
-    }
-
-    response_html = premailer_transform(render_to_string("emails/faucet_request_rejected.html", params))
-    response_txt = render_to_string("emails/faucet_request_rejected.txt", params)
-
-    return response_html, response_txt
-
-
-def render_faucet_request(fr):
-
-    params = {
-        'fr': fr,
-        'amount': settings.FAUCET_AMOUNT,
-		'email_type': 'faucet',
-        'utm_tracking': build_utm_tracking('faucet_request'),
-        'subscriber': get_or_save_email_subscriber(fr.email, 'internal'),
-    }
-
-    response_html = premailer_transform(render_to_string("emails/faucet_request.html", params))
-    response_txt = render_to_string("emails/faucet_request.txt", params)
-
-    return response_html, response_txt
-
-
 def render_bounty_startwork_expired(to_email, bounty, interest, time_delta_days):
     params = {
         'bounty': bounty,
@@ -1200,18 +1118,6 @@ def render_reserved_issue(to_email, user, bounty):
     subject = "Reserved Issue"
     response_html = premailer_transform(render_to_string("emails/reserved_issue.html", params))
     response_txt = render_to_string("emails/reserved_issue.txt", params)
-    return response_html, response_txt, subject
-
-
-def render_bounty_request(to_email, model, base_url):
-    params = {
-        'subscriber': get_or_save_email_subscriber(to_email, 'internal'),
-        'model': model,
-        'base_url': base_url
-    }
-    subject = _("New Bounty Request")
-    response_html = premailer_transform(render_to_string("emails/bounty_request.html", params))
-    response_txt = render_to_string("emails/bounty_request.txt", params)
     return response_html, response_txt, subject
 
 
@@ -1260,6 +1166,7 @@ def render_start_work_new_applicant(interest, bounty):
 		'email_type': 'bounty',
         'utm_tracking': build_utm_tracking('start_work_new_applicant'),
         'approve_worker_url': bounty.approve_worker_url(interest.profile.handle),
+        'reject_worker_url': bounty.reject_worker_url(interest.profile.handle),
     }
 
     subject = "A new request to work on your bounty"
@@ -1278,6 +1185,7 @@ def render_start_work_applicant_about_to_expire(interest, bounty):
 		'email_type': 'bounty',
         'utm_tracking': build_utm_tracking('start_work_applicant_about_to_expire'),
         'approve_worker_url': bounty.approve_worker_url(interest.profile.handle),
+        'reject_worker_url': bounty.reject_worker_url(interest.profile.handle),
     }
 
     subject = "24 Hrs to Approve"
@@ -1416,6 +1324,25 @@ def render_new_bounty_roundup(to_email):
 
 # DJANGO REQUESTS
 
+@staff_member_required
+def export_data(request):
+    from dashboard.models import Profile
+
+    handle = request.GET.get('handle')
+    profile = Profile.objects.filter(handle=handle).first()
+
+    response_html, _, _ = render_export_data_email(profile)
+    return HttpResponse(response_html)
+
+def export_data_failed(request):
+    from dashboard.models import Profile
+
+    handle = request.GET.get('handle')
+    profile = Profile.objects.filter(handle=handle).first()
+
+    response_html, _, _ = render_export_data_email_failed(profile)
+    return HttpResponse(response_html)
+
 
 @staff_member_required
 def weekly_recap(request):
@@ -1490,7 +1417,10 @@ def resend_new_tip(request):
             return redirect('/_administration')
 
         tip = Tip.objects.get(pk=pk)
-        tip.emails = tip.emails + [email]
+        try:
+            tip.emails = tip.emails + [email]
+        except:
+            pass
         tip_email(tip, [email], True)
         tip.save()
 
@@ -1504,10 +1434,9 @@ def resend_new_tip(request):
 @staff_member_required
 def new_bounty(request):
     from dashboard.models import Bounty
-    from marketing.views import quest_of_the_day, upcoming_grant, get_hackathons, latest_activities
+    from marketing.views import quest_of_the_day, upcoming_grant, get_hackathons
     bounties = Bounty.objects.current().order_by('-web3_created')[0:3]
-    old_bounties = Bounty.objects.current().order_by('-web3_created')[0:3]
-    response_html, _ = render_new_bounty(settings.CONTACT_EMAIL, bounties, old_bounties='', offset=int(request.GET.get('offset', 2)), quest_of_the_day=quest_of_the_day(), upcoming_grant=upcoming_grant(), hackathons=get_hackathons(), latest_activities=latest_activities(request.user), chats_count=7)
+    response_html, _ = render_new_bounty(settings.CONTACT_EMAIL, bounties, old_bounties='', offset=int(request.GET.get('offset', 2)), quest_of_the_day=quest_of_the_day(), upcoming_grant=upcoming_grant(), hackathons=get_hackathons(), chats_count=7)
     return HttpResponse(response_html)
 
 
@@ -1573,23 +1502,6 @@ def new_bounty_acceptance(request):
     return HttpResponse(response_html)
 
 
-@staff_member_required
-def bounty_feedback(request):
-    from dashboard.models import Bounty
-    from marketing.utils import handle_bounty_feedback
-
-    bounty = Bounty.objects.current().filter(idx_status='done').last()
-
-    (to_fulfiller, to_funder, fulfiller_previous_bounties, funder_previous_bounties) = handle_bounty_feedback(bounty)
-
-    if to_fulfiller:
-        response_html, _ = render_bounty_feedback(bounty, 'fulfiller', fulfiller_previous_bounties)
-        return HttpResponse(response_html)
-
-    if to_funder:
-        response_html, _ = render_bounty_feedback(bounty, 'funder', funder_previous_bounties)
-        return HttpResponse(response_html)
-
 
 @staff_member_required
 def funder_payout_reminder(request):
@@ -1629,30 +1541,18 @@ def no_applicant_reminder(request):
 
 
 @staff_member_required
-def match_distribution(request):
-    from townsquare.models import MatchRanking
-    mr = MatchRanking.objects.last()
-    response_html, _ = render_match_distribution(mr)
+def grant_match_distribution_final_txn(request):
+    from grants.models import CLRMatch
+    match = CLRMatch.objects.last()
+    response_html, _ = render_grant_match_distribution_final_txn(match)
     return HttpResponse(response_html)
 
 
 @staff_member_required
-def funder_stale(request):
-    """Display the stale funder email template.
-
-    Params:
-        limit (int): The number of days to limit the scope of the email to.
-        duration_copy (str): The copy to use for associated duration text.
-        username (str): The Github username to reference in the email.
-
-    Returns:
-        HttpResponse: The HTML version of the templated HTTP response.
-
-    """
-    limit = int(request.GET.get('limit', 30))
-    duration_copy = request.GET.get('duration_copy', 'about a month')
-    username = request.GET.get('username', 'foo')
-    response_html, _ = render_funder_stale(username, limit, duration_copy)
+def match_distribution(request):
+    from townsquare.models import MatchRanking
+    mr = MatchRanking.objects.last()
+    response_html, _ = render_match_distribution(mr)
     return HttpResponse(response_html)
 
 
@@ -1677,22 +1577,6 @@ def start_work_expire_warning(request):
     return HttpResponse(response_html)
 
 
-@staff_member_required
-def faucet(request):
-    from faucet.models import FaucetRequest
-    fr = FaucetRequest.objects.last()
-    response_html, _ = render_faucet_request(fr)
-    return HttpResponse(response_html)
-
-
-@staff_member_required
-def faucet_rejected(request):
-    from faucet.models import FaucetRequest
-    fr = FaucetRequest.objects.exclude(comment_admin='').last()
-    response_html, _ = render_faucet_rejected(fr)
-    return HttpResponse(response_html)
-
-
 def roundup(request):
     email = request.user.email if request.user.is_authenticated else 'test@123.com'
     response_html, _, _, _, _ = render_new_bounty_roundup(email)
@@ -1701,7 +1585,7 @@ def roundup(request):
 
 @staff_member_required
 def quarterly_roundup(request):
-    from marketing.utils import get_platform_wide_stats
+    from marketing.common.utils import get_platform_wide_stats
     from dashboard.models import Profile
     platform_wide_stats = get_platform_wide_stats()
     email = settings.CONTACT_EMAIL
@@ -1784,7 +1668,7 @@ def start_work_applicant_expired(request):
 @staff_member_required
 def tribe_hackathon_prizes(request):
     from dashboard.models import HackathonEvent, Bounty
-    from marketing.utils import generate_hackathon_email_intro
+    from marketing.common.utils import generate_hackathon_email_intro
 
     hackathon = HackathonEvent.objects.filter(start_date__date=(timezone.now()+timezone.timedelta(days=3))).first()
 

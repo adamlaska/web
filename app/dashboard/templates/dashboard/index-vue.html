@@ -218,7 +218,7 @@
                         </div>
                         <div class="col-12 options" id="list-townsquare-orgs">
                           {% for org in orgs %}
-                            <div class="">
+                            <div>
                               <label class="filter-label townsquare-org-filter">
                                 <a href="?filter=tribe:{{org.org_name}}"><img src="{{org.avatar_url}}" class="rounded-circle" width="24" height="24" alt="{{org.display_name}}"> {{org.display_name}}</a>
                               </label>
@@ -723,8 +723,8 @@
                 </b-tab>
                 <template v-slot:tabs-end  v-if="!hackHasEnded">
                   <li role="presentation" class="nav-item navigation">
-                    <a href="{% url 'hackathon_onboard' hackathon.slug %}" class="text-reset text-decoration-none nav-link">
-                      <div class="mt-4">Guide</div>
+                    <a href="{% url 'hackathon_onboard' hackathon.slug %}" class="text-reset text-decoration-none mt-2">
+                      Guide
                     </a>
                   </li>
                 </template>
@@ -732,7 +732,20 @@
             </div>
             <div class="d-none d-xl-block col-xl-2">
               <div id="sponsor_sidebar" class="font-body">
-                <div class="sponsor-top"></div>
+                <div class="sponsor-top">
+                  {% if hackathon.discord_server is not None %}
+                    <div class="d-flex align-items-center justify-content-center col-12">
+                      <a
+                        type="button"
+                        class="btn btn-primary"
+                        href="{{ hackathon.discord_server }}"
+                        target="_blank"
+                      >
+                        <i class="fab fa-discord mr-1"></i>Join Discord
+                      </a>
+                    </div>
+                  {% endif %}  
+                </div>
                 <sponsor-tribes-widget v-if="hackathonSponsors.length > 0" inline-template>
                   <div class="p-xl-2 p-4">
                     <div class="offset-1 subheading left-ribbon">
@@ -769,7 +782,7 @@
       <div id="onboard-footer" class="row hidden font-body">
         <div class="col-12">
           <p>{% trans "Want to Fund an issue ?" %}
-            <a target="_blank" rel="noopener noreferrer" href="{% url "new_funding_short" %}">{% trans "Get Started!" %}</a>
+            <a target="_blank" rel="noopener noreferrer" href="{% url 'new_bounty' %}">{% trans "Get Started!" %}</a>
           </p>
         </div>
       </div>
@@ -786,7 +799,7 @@
           <slot></slot>
         </select>
       </script>
-      {% bundle merge_js file new_bounty %}
+      {% bundle merge_js file app_dashboard %}
         <script src="markdown-it.min.js" base-dir="/node_modules/markdown-it/dist/"></script>
       {% endbundle %}
       {{orgs|json_script:"sponsor-list"}}

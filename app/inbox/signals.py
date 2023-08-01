@@ -17,6 +17,8 @@ You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
+from html import escape
+
 from django.contrib.auth import get_user_model
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -51,7 +53,7 @@ def create_notification(sender, **kwargs):
             get_user_model().objects.get(username__iexact=bounty.bounty_owner_github_username),
             bounty.url,
             'worker_applied',
-            f'<b>{activity.profile.user} applied</b> to work on {bounty.title}'
+            f'<b>{activity.profile.user} applied</b> to work on {escape(bounty.title)}'
         )
 
     if activity.activity_type == 'worker_approved':
@@ -61,7 +63,7 @@ def create_notification(sender, **kwargs):
             get_user_model().objects.get(username__iexact=activity.metadata['worker_handle']),
             bounty.url,
             'worker_approved',
-            f'You have been <b>approved to work on {bounty.title}</b>'
+            f'You have been <b>approved to work on {escape(bounty.title)}</b>'
         )
 
     if activity.activity_type == 'worker_rejected':
@@ -71,7 +73,7 @@ def create_notification(sender, **kwargs):
             get_user_model().objects.get(username__iexact=activity.metadata['worker_handle']),
             bounty.url,
             'worker_rejected',
-            f'Your request to work on <b>{bounty.title} has been rejected</b>'
+            f'Your request to work on <b>{escape(bounty.title)} has been rejected</b>'
         )
 
     if activity.activity_type == 'start_work':
@@ -81,7 +83,7 @@ def create_notification(sender, **kwargs):
             get_user_model().objects.get(username__iexact=bounty.bounty_owner_github_username),
             bounty.url,
             'start_work',
-            f'<b>{activity.profile.user} has started work</b> on {bounty.title}'
+            f'<b>{activity.profile.user} has started work</b> on {escape(bounty.title)}'
         )
 
     if activity.activity_type == 'work_submitted':
@@ -91,7 +93,7 @@ def create_notification(sender, **kwargs):
             get_user_model().objects.get(username__iexact=bounty.bounty_owner_github_username),
             bounty.url,
             'work_submitted',
-            f'<b>{activity.profile.user} has submitted work</b> for {bounty.title}'
+            f'<b>{activity.profile.user} has submitted work</b> for {escape(bounty.title)}'
         )
 
     if activity.activity_type == 'work_done':
@@ -103,7 +105,7 @@ def create_notification(sender, **kwargs):
             bounty.url,
             'work_done',
             f'<b>{bounty.bounty_owner_github_username}</b> has paid out ' +
-            f'{amount_paid} USD for your work on {bounty.title}'
+            f'{amount_paid} USD for your work on {escape(bounty.title)}'
         )
 
     if activity.activity_type == 'stop_work':
@@ -113,7 +115,7 @@ def create_notification(sender, **kwargs):
             get_user_model().objects.get(username__iexact=bounty.bounty_owner_github_username),
             bounty.url,
             'stop_work',
-            f'<b>{activity.profile.user} has stopped work</b> on {bounty.title}'
+            f'<b>{activity.profile.user} has stopped work</b> on {escape(bounty.title)}'
         )
 
     if activity.activity_type == 'new_crowdfund':
@@ -124,7 +126,7 @@ def create_notification(sender, **kwargs):
             get_user_model().objects.get(username__iexact=bounty.bounty_owner_github_username),
             bounty.url,
             'new_crowdfund',
-            f'A <b>crowdfunding contribution worth {amount} USD</b> has been attached for {bounty.title}'
+            f'A <b>crowdfunding contribution worth {amount} USD</b> has been attached for {escape(bounty.title)}'
         )
 
     if activity.activity_type == 'new_kudos':
@@ -149,87 +151,6 @@ def create_notification(sender, **kwargs):
         mentioned_profiles = get_profiles_from_text(text).exclude(id__in=[activity.profile_id])
         send_mention_notification_to_users(activity, mentioned_profiles)
 
-    if activity.activity_type == 'create_ptoken':
-        send_notification_to_user(
-            activity.profile.user,
-            activity.profile.user,
-            activity.profile.absolute_url,
-            'create_ptoken',
-            f'You <b>new time token {activity.ptoken.token_symbol}</b> has been created!'
-        )
-
-    if activity.activity_type == 'buy_ptoken':
-        send_notification_to_user(
-            activity.profile.user,
-            activity.ptoken.token_owner_profile.user,
-            activity.ptoken.token_owner_profile.absolute_url,
-            'buy_ptoken',
-            f'New {activity.ptoken.token_symbol} <b>purchase from {activity.profile.user}</b>'
-        )
-
-    if activity.activity_type == 'accept_redemption_ptoken':
-        send_notification_to_user(
-            activity.ptoken.token_owner_profile.user,
-            activity.redemption.redemption_requester.user,
-            activity.redemption.url,
-            'accept_redemption_ptoken',
-            f'📥 @{activity.ptoken.token_owner_profile.handle} <b>accepted</b> your request to redeem <b>{activity.redemption.total } { activity.ptoken.token_symbol }: "{activity.redemption.reason}</b>'
-        )
-
-    if activity.activity_type == 'denies_redemption_ptoken':
-        redemption = activity.redemption
-        if activity.redemption.redemption_state == 'denied':
-            from_profile = redemption.ptoken.token_owner_profile
-            to_profile = redemption.redemption_requester
-            msg = f'📥 @{from_profile.handle} <b>denied</b> your request to redeem <b>{activity.redemption.total} {activity.ptoken.token_symbol}: "{activity.redemption.reason}</b>'
-        else:
-            if redemption.redemption_requester != redemption.canceller:
-                from_profile = redemption.ptoken.token_owner_profile
-                to_profile = redemption.redemption_requester
-                msg = f'📥 @{from_profile.handle} <b>cancelled</b> your request to redeem <b>{activity.redemption.total} {activity.ptoken.token_symbol}: "{activity.redemption.reason}</b>'
-            else:
-                from_profile = redemption.redemption_requester
-                to_profile = redemption.ptoken.token_owner_profile
-                msg = f'📥 @{from_profile.handle} <b>cancelled</b> request to redeem <b>{activity.redemption.total} {activity.ptoken.token_symbol}: "{activity.redemption.reason}</b>'
-        send_notification_to_user(
-            from_profile.user,
-            to_profile.user,
-            redemption.url,
-            'denies_redemption_ptoken',
-            msg
-        )
-
-    if activity.activity_type == 'complete_redemption_ptoken':
-        redemption = activity.redemption
-        send_notification_to_user(
-            redemption.redemption_requester.user,
-            redemption.ptoken.token_owner_profile.user,
-            redemption.url,
-            'complete_redemption_ptoken',
-            f'📥 @{redemption.redemption_requester.handle} <b>completed</b> their redemption <b>{activity.redemption.total} {activity.ptoken.token_symbol}: "{activity.redemption.reason}</b>'
-        )
-
-    if activity.activity_type == 'incoming_redemption_ptoken':
-        redemption = activity.redemption
-        send_notification_to_user(
-            redemption.ptoken.token_owner_profile.user,
-            redemption.redemption_requester.user,
-            redemption.url,
-            'incoming_redemption_ptoken',
-            f'Redemption "{redemption.reason}" marked as <b>ready from {redemption.ptoken.token_owner_profile}</b>'
-        )
-
-    # TODO
-    # For Funder
-    # Your bounty hunters haven't responded on this issue in a few days.
-    # Remove them if you haven't heard from them?
-    # Your bounty is expiring soon
-    # For Hunter
-    # You haven't responded to this issue in x days.
-    # This issue has been remarketed and has your skill sets. Are you interested?
-    # You have been removed from a bounty due to no response
-    # Your submission has been declined.
-    # Funding has increased on a bounty that you’re working on.
 
 
 # Added due comments and likes aren't direct members of activity.

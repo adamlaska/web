@@ -35,13 +35,13 @@ from django.views.decorators.http import require_http_methods
 
 from app.utils import get_profiles_from_text
 from cacheops import cached_view
-from dashboard.models import Activity, HackathonEvent, Profile, Tip, get_my_earnings_counter_profiles, get_my_grants
+from dashboard.models import Activity, HackathonEvent, Profile, Tip
 from dashboard.notifications import amount_usdt_open_work, open_bounties
 from dashboard.tasks import grant_update_email_task
 from economy.models import Token
 from marketing.mails import mention_email, new_funding_limit_increase_request, new_token_request, wall_post_email
-from marketing.models import EmailInventory
-from perftools.models import JSONStore
+from marketing.models import EmailInventory, ImageDropZone
+from perftools.models import JSONStore, StaticJsonEnv
 from ratelimit.decorators import ratelimit
 from retail.helpers import get_ip
 from townsquare.tasks import increment_view_counts
@@ -56,14 +56,18 @@ connect_types = ['status_update', 'wall_post', 'new_bounty', 'created_quest', 'n
 
 def get_activities(tech_stack=None, num_activities=15):
     # get activity feed
+    activities = Activity.objects.filter(
+        activities_index__key__startswith=f'bounty:',
+        hidden=False
+    ).order_by('-created_on')
 
-    activities = Activity.objects.select_related('bounty').filter(bounty__network='mainnet').order_by('-created')
     if tech_stack:
         activities = activities.filter(bounty__metadata__icontains=tech_stack)
     activities = activities[0:num_activities]
     return activities
 
 def index(request):
+
     context = {
         'title': 'Build and Fund the Open Web Together',
         'card_title': 'Gitcoin - Build and Fund the Open Web Together',
@@ -88,6 +92,44 @@ def index(request):
             'bounties_gmv': '3.43m'
         }
     context.update(data_results)
+
+    try:
+        landingBanner = StaticJsonEnv.objects.get(key='landingBanner').data
+        slides = landingBanner['slides']
+
+        for index, slide in enumerate(slides):
+            slides[index]['img'] = ImageDropZone.objects.get(pk=slide['img']).image.url
+            if slide['backgroundImage']:
+                slides[index]['backgroundImage'] = ImageDropZone.objects.get(pk=slide['backgroundImage']).image.url
+
+
+        if len(slides) == 0:
+            landingBanner = {
+                'default': True,
+                'slides': [
+                    {
+                        'img': static('v2/images/home/Flying_ppl_optimized.svg'),
+                        'title': 'Build and Fund the Open Web Together',
+                        'subtitle': 'Connect with the community developing digital public goods, creating financial freedom, and defining the future of the open web.',
+                    }
+                ]
+            }
+
+        landingBanner['slides'] = slides
+
+    except:
+        landingBanner = {
+            'default': True,
+            'slides': [
+                {
+                    'img': static('v2/images/home/Flying_ppl_optimized.svg'),
+                    'title': 'Build and Fund the Open Web Together',
+                    'subtitle': 'Connect with the community developing digital public goods, creating financial freedom, and defining the future of the open web.',
+                }
+            ]
+        }
+
+    context.update({'landingBanner': landingBanner})
 
     return TemplateResponse(request, 'home/index2021.html', context)
 
@@ -409,7 +451,7 @@ def contributor_bounties(request, tech_stack):
     }
 
     if tech_stack == 'new':
-        return redirect('new_funding_short')
+        return redirect('new_bounty')
 
     try:
         store = JSONStore.objects.filter(view='contributor_landing_page', key=tech_stack).first()
@@ -468,6 +510,8 @@ def robotstxt(request):
 
 
 def about(request):
+    # redirect to new site
+    return redirect('https://gitcoin.co/about')
 
     data_about = JSONStore.objects.get(view='about', key='general').data
 
@@ -726,6 +770,9 @@ def not_a_token(request):
     return redirect('/')
 
 
+def results2023(request, keyword=None):
+    return TemplateResponse(request, 'results-2023.html')
+
 def results(request, keyword=None):
     """Render the Results response."""
     if keyword and keyword not in programming_languages:
@@ -737,112 +784,85 @@ def results(request, keyword=None):
     context['prefix'] = 'data-'
     import json
     context['avatar_url'] = static('v2/images/results_preview.gif')
-    return TemplateResponse(request, 'results.html', context)
+    return TemplateResponse(request, 'results.html')
 
-def get_specific_activities(what, trending_only, user, after_pk, request=None):
-    only_profile_cards = ['mint_ptoken', 'edit_price_ptoken', 'accept_redemption_ptoken',
-                          'denies_redemption_ptoken', 'incoming_redemption_ptoken', 'buy_ptoken']
-    # create diff filters
-    activities = Activity.objects.filter(hidden=False).order_by('-created_on').exclude(pin__what__iexact=what)
+def get_specific_activities(what, trending_only, user, after_pk, request=None, page=1, page_size=10):
 
+    # 1. Init
+    view_count_threshold = 10
+    start_index = (page-1) * page_size
+    end_index = page * page_size
+
+    activities = Activity.objects.none()
+    filter_applied = False
+
+    # 2. Choose which filter to index
+
+    # grants
+    if (
+        what in ['grants', 'all_grants']
+    ):
+        activities = Activity.objects.filter(activities_index__key__startswith='grant:')
+        filter_applied = True
+    elif 'grant:' in what:
+        activities = Activity.objects.filter(activities_index__key=what)
+        filter_applied = True
+
+    # all Grants
+    if what == 'all_grants':
+        activities = Activity.objects.filter(activities_index__key__startswith='grant:')
+        filter_applied = True
+
+    # kudos
+    if (
+        what in ['kudos']
+    ):
+        activities = Activity.objects.filter(activities_index__key__startswith='kudo:')
+        filter_applied = True
+    elif 'kudos:' in what:
+        activities = Activity.objects.filter(activities_index__key=what.replace('kudos', 'kudo'))
+        filter_applied = True
+
+    # hackathon project
+    if 'project:' in what:
+        activities = Activity.objects.filter(activities_index__key=what)
+        filter_applied = True
+
+    # tribes
+    if 'tribe:' in what:
+        filter_applied = True
+        handle = what[6:]
+        profile = Profile.objects.filter(handle=handle).first()
+        if profile:
+            activities = Activity.objects.filter(activities_index__key=f'profile:{profile.pk}')
+
+    # hackathon activity
+    if 'hackathon:' in what:
+        activities = Activity.objects.filter(activities_index__key=what)
+        filter_applied = True
+
+    # single activity
+    if 'activity:' in what:
+        try:
+            activities = Activity.objects.filter(pk=what.replace('activity:', ''))
+            filter_applied = True
+        except ValueError:
+            # ValueError might be thrown if 'activity' is not a valid pk value (contains for example a string)
+            raise Http404
+
+    # Defaults
+    if not activities and not filter_applied:
+        # Just use all of the activity and allow the [start_index:end_index] slice to limit the response
+        activities = Activity.objects.all()
+
+    # 3. Cross-ref the activity_pks->activity_id with the Activity objects
+    activities = activities.filter(hidden=False).order_by('-created_on')
+
+    # 4. Filter out activities based on network
     network = 'rinkeby' if settings.DEBUG else 'mainnet'
     filter_network = 'rinkeby' if network == 'mainnet' else 'mainnet'
-
     if 'grant:' in what:
         activities = activities.exclude(subscription__network=filter_network)
-
-    activities = activities.exclude(activity_type__in=only_profile_cards)
-    view_count_threshold = 10
-
-    is_auth = user and user.is_authenticated
-
-    ## filtering
-    relevant_profiles = []
-    relevant_grants = []
-    if what == 'tribes':
-        relevant_profiles = get_my_earnings_counter_profiles(user.profile.pk) if is_auth else []
-    elif what == 'all_grants':
-        activities = activities.filter(grant__isnull=False)
-    elif what == 'grants':
-        relevant_grants = get_my_grants(user.profile) if is_auth else []
-    elif what == 'my_threads' and is_auth:
-        activities = user.profile.subscribed_threads.all().order_by('-created') if is_auth else []
-    elif what == 'my_favorites' and is_auth:
-        favorites = user.favorites.all().values_list('activity_id')
-        activities = Activity.objects.filter(id__in=Subquery(favorites)).order_by('-created')
-    elif 'keyword-' in what:
-        keyword = what.split('-')[1]
-        relevant_profiles = Profile.objects.filter(keywords__icontains=keyword)
-    elif 'search-' in what:
-        keyword = what.split('-')[1]
-        view_count_threshold = 5
-        base_filter = Q(metadata__icontains=keyword, activity_type__in=connect_types)
-        keyword_filter = Q(pk=0) #noop
-        if keyword == 'meme':
-            keyword_filter = Q(metadata__type='gif') | Q(metadata__type='png') | Q(metadata__type='jpg')
-        if keyword == 'meme':
-            keyword_filter = Q(metadata__icontains='spotify') | Q(metadata__type='soundcloud') | Q(metadata__type='pandora')
-        activities = activities.filter(keyword_filter | base_filter)
-    elif 'hackathon:' in what:
-        terms = what.split(':')
-        pk = terms[1]
-
-        if len(terms) > 2:
-            if terms[2] == 'tribe':
-                key = terms[3]
-                profile_filter = Q(profile__handle=key.lower())
-                other_profile_filter = Q(other_profile__handle=key.lower())
-                keyword_filter = Q(metadata__icontains=key)
-                activities = activities.filter(keyword_filter | profile_filter | other_profile_filter)
-                activities = activities.filter(activity_type__in=connect_types).filter(
-                    Q(hackathonevent=pk) | Q(bounty__event=pk))
-            else:
-                activities = activities.filter(activity_type__in=connect_types, metadata__icontains=terms[2]).filter(
-                    Q(hackathonevent=pk) | Q(bounty__event=pk))
-        else:
-            activities = activities.filter(activity_type__in=connect_types).filter(
-                Q(hackathonevent=pk) | Q(bounty__event=pk))
-    elif 'tribe:' in what:
-        key = what.split(':')[1]
-        profile_filter = Q(profile__handle=key.lower())
-        other_profile_filter = Q(other_profile__handle=key.lower())
-        keyword_filter = Q(metadata__icontains=key)
-        activities = activities.filter(keyword_filter | profile_filter | other_profile_filter)
-    elif 'activity:' in what:
-        view_count_threshold = 0
-        pk = what.split(':')[1]
-        activities = Activity.objects.filter(pk=pk) if pk and pk.isdigit() else Activity.objects.none()
-        if request:
-            page = int(request.GET.get('page', 1))
-            if page > 1:
-                activities = Activity.objects.none()
-    elif 'project:' in what:
-        terms = what.split(':')
-        pk = terms[1]
-
-        if len(terms) > 2:
-            activities = activities.filter(activity_type__in=connect_types, metadata__icontains=terms[2]).filter(project_id=pk)
-        else:
-            activities = activities.filter(activity_type__in=connect_types).filter(project_id=pk)
-    elif ':' in what:
-        pk = what.split(':')[1]
-        key = what.split(':')[0] + "_id"
-        if key == 'activity_id':
-            key = 'pk'
-        kwargs = {}
-        kwargs[key] = pk
-        activities = activities.filter(**kwargs)
-
-
-    # filters
-    if len(relevant_profiles):
-        activities = activities.filter(profile__in=relevant_profiles)
-    if len(relevant_grants):
-        activities = activities.filter(grant__in=relevant_grants)
-    if what == 'connect':
-        activities = activities.filter(activity_type__in=connect_types)
-    if what == 'kudos':
-        activities = activities.filter(activity_type__in=['new_kudos', 'receive_kudos'])
 
     # after-pk filters
     if after_pk:
@@ -852,19 +872,20 @@ def get_specific_activities(what, trending_only, user, after_pk, request=None):
             view_count_threshold = 40
         activities = activities.filter(view_count__gt=view_count_threshold)
 
-    activities = activities.filter().exclude(pin__what=what)
-
-    return activities
+    # 5. Apply pagination slice and return Activities
+    return activities[start_index:end_index]
 
 
 def activity(request):
     """Render the Activity response."""
-    page_size = 7
+
     page = int(request.GET.get('page', 1)) if request.GET.get('page') and request.GET.get('page').isdigit() else 1
     what = request.GET.get('what', 'everywhere')
     trending_only = int(request.GET.get('trending_only', 0)) if request.GET.get('trending_only') and request.GET.get('trending_only').isdigit() else 0
-    activities = get_specific_activities(what, trending_only, request.user, request.GET.get('after-pk'), request)
+    activities = get_specific_activities(what, trending_only, request.user, request.GET.get('after-pk'), request, page=page)
     activities = activities.prefetch_related('profile', 'likes', 'comments', 'kudos', 'grant', 'subscription', 'hackathonevent', 'pin')
+    activities = activities.cache()
+
     # store last seen
     if activities.exists():
         last_pk = activities.first().pk
@@ -873,12 +894,10 @@ def activity(request):
         request.session[what] = next_pk
     # pagination
     next_page = page + 1
-    start_index = (page-1) * page_size
-    end_index = page * page_size
-
     #p = Paginator(activities, page_size)
     #page = p.get_page(page)
-    page = activities[start_index:end_index]
+
+    page = activities
     suppress_more_link = not len(page)
 
     # increment view counts
@@ -895,8 +914,7 @@ def activity(request):
         'pinned': None,
         'target': f'/activity?what={what}&trending_only={trending_only}&page={next_page}',
         'title': _('Activity Feed'),
-        'TOKENS': request.user.profile.token_approvals.all() if request.user.is_authenticated else [],
-        'my_tribes': list(request.user.profile.tribe_members.values_list('org__handle',flat=True)) if request.user.is_authenticated else [],
+        'TOKENS': request.user.profile.token_approvals.all() if request.user.is_authenticated and request.user.profile else [],
     }
     context["activities"] = [a.view_props_for(request.user) for a in page]
 
@@ -992,6 +1010,8 @@ def create_status_update(request):
 
         try:
             activity = Activity.objects.create(**kwargs)
+            activity.populate_activity_index()
+
             response['status'] = 200
             response['message'] = 'Status updated!'
 
@@ -1042,76 +1062,124 @@ def presskit(request):
 
     brand_colors = [
         (
-            "Violet",
+            "gc-violet-400",
             "#6F3FF5",
-            "11, 63, 245",
-            "256, 90, 60"
+            "111, 63, 245",
+            "256, 90%, 60%"
         ),
         (
-            "Teal",
+            "gc-teal-400",
             "#02E2AC",
             "2, 226, 172",
-            "166, 98, 45"
+            "166, 98%, 45%"
         ),
         (
-            "Pink",
+            "gc-pink-400",
             "#F3587D",
-            "243, 88, 125",
-            "346, 87, 65"
+            "245, 121, 166,",
+            "338, 86%, 72%"
         ),
         (
-            "Yellow",
+            "gc-yellow-400",
             "#FFCC00",
             "255, 204, 0",
-            "48, 100, 50"
+            "48, 100%, 50%,"
         ),
         (
-            "Light Violet",
+            "gc-violet-100",
+            "#F0EBFF",
+            "240, 235, 255",
+            "255, 100%, 96%"
+        ),
+        (
+            "gc-teal-100",
+            "#E6FFF9",
+            "230, 255, 249",
+            "166, 100%, 95%,"
+        ),
+        (
+            "gc-pink-100",
+            "#FDDEE4",
+            "253, 222, 228",
+            "348, 89%, 93%"
+        ),
+        (
+            "gc-yellow-100",
+            "#FFF8DB",
+            "255, 248, 219",
+            "48, 100%, 93%"
+        ),
+        (
+            "gc-violet-200",
+            "#C9B8FF",
+            "201, 184, 255",
+            "254, 100%, 86%"
+        ),
+        (
+            "gc-teal-200",
+            "#B3FFED",
+            "179, 255, 237",
+            "166, 100%, 85%"
+        ),
+        (
+            "gc-pink-200",
+            "#FAADBF",
+            "250, 173, 191",
+            "346, 89%, 83%"
+        ),
+        (
+            "gc-yellow-200",
+            "#FFEEA8",
+            "255, 238, 168",
+            "48, 100%, 83%"
+        ),
+        (
+            "gc-violet-300",
             "#8C65F7",
             "140, 101, 247",
-            "256, 90, 68"
+            "256, 90%, 68%"
         ),
         (
-            "Light Teal",
+            "gc-teal-300",
             "#5BF1CD",
             "91, 241, 205",
-            "166, 84, 65"
+            "166, 84%, 65%,"
         ),
         (
-            "Light Pink",
+            "gc-pink-300",
             "#F579A6",
             "245, 121, 166",
-            "338, 86, 72"
+            "338, 86%, 72%"
         ),
         (
-            "Light Yellow",
+            "gc-yellow-300",
             "#FFDB4C",
             "255, 219, 76",
-            "48, 100, 65"
+            "48, 100%, 65%"
         ),
         (
-            "Dark Violet",
+            "gc-violet-500",
             "#5932C4",
             "89, 50, 196",
-            "256, 59, 48"
+            "256, 90%, 60%"
         ),
         (
-            "Dark Teal",
+            "gc-teal-500",
             "#11BC92",
             "17, 188, 146",
-            "165, 83, 40"
+            "165, 83%, 40%"
         ),
         (
-            "Dark Pink",
+            "gc-pink-500",
             "#D44D6E",
-            "212, 77, 110",
-            "345, 61, 57"
+            "243, 88, 125",
+            "346, 87%, 65%"
         ),
         (
-            "Dark Yellow",
+            "gc-yellow-500",
             "#E1B815",
             "255, 184, 21",
-            "48, 83, 48"
+            "48, 83%, 48%"
         ),
 
     ]
@@ -1127,10 +1195,11 @@ def presskit(request):
 def handler403(request, exception=None):
     return error(request, 403)
 
+def csrf_failure(request, reason=""):
+    return error(request, 403)
 
 def handler404(request, exception=None):
     return error(request, 404)
-
 
 def handler500(request, exception=None):
     return error(request, 500)
@@ -1259,7 +1328,7 @@ def reddit(request):
     return redirect('https://www.reddit.com/r/gitcoincommunity/')
 
 def blog(request):
-    return redirect('https://gitcoin.co/blog')
+    return redirect('https://gitcoin.co/blog?utm_source=bounties.gitcoin.co')
 
 def calendar(request):
     return redirect('https://calendar.google.com/calendar/embed?src=7rq7ga2oubv3tk93hk67agdv88%40group.calendar.google.com')

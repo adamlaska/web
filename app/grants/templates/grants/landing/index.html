@@ -1,0 +1,249 @@
+{% comment %}
+Copyright (C) 2021 Gitcoin Core
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published
+by the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see
+<http: //www.gnu.org/licenses />.
+{% endcomment %}
+{% load humanize static i18n bundle tz %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  {% include 'shared/head.html' with slim=1 %}
+  {% include 'shared/cards_pic.html' %}
+  {% bundle css file grants_landing %}
+    <link rel="stylesheet" type="text/x-scss" href={% static "v2/scss/search_bar.scss" %} />
+    <link rel="stylesheet" type="text/x-scss" href={% static "v2/scss/kudos/styles.scss" %} />
+    <link rel="stylesheet" type="text/x-scss" href={% static "v2/scss/grants/card.scss" %} />
+    <link rel="stylesheet" type="text/x-scss" href={% static "v2/scss/grants/collection.scss" %} />
+    <link rel="stylesheet" type="text/x-scss" href={% static "v2/scss/activity_stream.scss" %} />
+    <link rel="stylesheet" type="text/x-scss" href={% static "v2/scss/sidebar_search.scss" %} />
+  {% endbundle %}
+  <style>
+    .select2-selection .select2-selection--single {
+      background: none;
+      outline: none;
+      border: none !important;
+      color: var(--gc-blue);
+      padding: 0;
+      max-width: 136px;
+    }
+    .countdown-color {
+      color: var(--gc-blue-hover);
+    }
+    .countdown{
+      display: flex;
+      gap: 5px;
+      align-items: center;
+    }
+
+    .active-clr-banner {
+      height: 111px !important;
+    }
+
+    @media (max-width: 991.98px) {
+      .active-clr-banner .round-details p {
+        font-size: 20px;
+      }
+    }
+
+    @media (min-width: 992px) {
+    .grants-program-text {
+      text-align: right;
+    }
+    }
+
+
+  </style>
+  <style class="page-styles">
+    {% if grant_bg.inline_css %}{{grant_bg.inline_css}}{% endif %}
+  </style>
+
+</head>
+
+<body class="interior {{ active }} grant g-font-muli">
+  {% include 'shared/tag_manager_2.html' %}
+  {% include 'shared/top_nav.html' with class='d-md-flex' %}
+  {% include 'grants/nav.html' %}
+
+    <div>
+      {% if announcement %}
+      <div class="py-3 text-center" style="background-color: #6F3FF5">
+        <p class="mb-0 white">{{announcement.desc | safe}}</p>
+      </div>
+      {% endif %}
+
+
+        <div id="grants-showcase">
+          {% include 'grants/landing/landing_qf_active.html' %}
+          <div class="">
+            <div v-if="isLandingPage" class="my-5">
+              {% include 'grants/landing/active_clr_round.html'%}
+            </div>
+            <div class="mb-5 py-5 bg-violet-100">
+              <div class="container">
+                <div class="row justify-content-between align-items-center">
+                  <div class="col-auto">
+                    <div class="row justify-content-start align-items-center">
+                      <div class="col-auto">
+                        <h4>Discover Grants</h4>
+                        <!-- <p class="font-subheader">Popular and interesting Grants from the Gitcoin community</p> -->
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-auto">
+                    <a href="/grants/explorer">{% trans "View all grants" %}</a>
+                    <i class="ml-2 text-primary fas fa-long-arrow-alt-right"></i>
+                  </div>
+                </div>
+
+                <div class="mb-5">
+                  Gitcoin's Grants Program has always been focused on helping sustain digital public goods that the Gitcoin and broader web3 community care about.  We are currently transitioning to a decentralized program, <a href="https://gov.gitcoin.co/t/introducing-gitcoin-grants-stack-allo-protocol-product-overviews-part-1-of-2/12664" target="_blank">Gitcoin Grants Stack</a>, that will enable anyone to launch and manage their own programs the same way we manage ours at any given time.<br /><br />
+                  We have completed our <a href="https://gitcoin.co/blog/announcing-the-gitcoin-alpha-tests#:~:text=The%20Alpha%20Test%20Season%20is,wave%20of%20community%2Ddriven%20initiatives." target="_blank">Alpha Test Season</a>, where we ran several rounds to test our protocol alongside partners and the community, laying the foundation for a launch at scale over the coming months.
+
+                  You can still browse through grants and access your own grants though the legacy platform. As we are building our protocol, we will provide our community with regular updates on the progress.
+
+                </div>
+
+                <!-- <div class="mb-5">
+                    <h4>Gitcoin Passport</h4>
+                    <i>As we <a href="https://twitter.com/gitcoin/status/1622616724322365442">mentioned last week</a>, we are giving people who donated to our Alpha Round extra time to get a sufficient Gitcoin Passport score to qualify for matching.</i><br /><br />
+                    If you had a sufficient score when you were donating, you can ignore this message as your contributions will be matched, even though your current score may have been reset due to infrastructure changes we made this weekend.<br /><br />
+
+                    <div class="mb-3 bg-white p-2 border">
+                    <h6 class="mb-2">
+                      <svg width="18px" height="18px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M15.3909 5.21L16.8009 8.03C16.9909 8.42 17.5009 8.79 17.9309 8.87L20.4809 9.29C22.1109 9.56 22.4909 10.74 21.3209 11.92L19.3309 13.91C19.0009 14.24 18.8109 14.89 18.9209 15.36L19.4909 17.82C19.9409 19.76 18.9009 20.52 17.1909 19.5L14.8009 18.08C14.3709 17.82 13.6509 17.82 13.2209 18.08L10.8309 19.5C9.12091 20.51 8.08093 19.76 8.53093 17.82L9.10093 15.36C9.21093 14.9 9.02093 14.25 8.69093 13.91L6.70094 11.92C5.53094 10.75 5.91094 9.57 7.54094 9.29L10.0909 8.87C10.5209 8.8 11.0309 8.42 11.2209 8.03L12.6309 5.21C13.3809 3.68 14.6209 3.68 15.3909 5.21Z" fill="#292D32"/>
+                        <path opacity="0.4" d="M8 5.75H2C1.59 5.75 1.25 5.41 1.25 5C1.25 4.59 1.59 4.25 2 4.25H8C8.41 4.25 8.75 4.59 8.75 5C8.75 5.41 8.41 5.75 8 5.75Z" fill="#292D32"/>
+                        <path opacity="0.4" d="M5 19.75H2C1.59 19.75 1.25 19.41 1.25 19C1.25 18.59 1.59 18.25 2 18.25H5C5.41 18.25 5.75 18.59 5.75 19C5.75 19.41 5.41 19.75 5 19.75Z" fill="#292D32"/>
+                        <path opacity="0.4" d="M3 12.75H2C1.59 12.75 1.25 12.41 1.25 12C1.25 11.59 1.59 11.25 2 11.25H3C3.41 11.25 3.75 11.59 3.75 12C3.75 12.41 3.41 12.75 3 12.75Z" fill="#292D32"/>
+                        </svg> If you did not have a sufficient score before the round closed last week, you must:</h6>
+
+                    <ol class="mb-0">
+                      <li class="mb-2">
+                        Add enough stamps to your Gitcoin Passport at <a href="https://passport.gitcoin.co" target="_blank">passport.gitcoin.co</a>.
+                      </li>
+                      <li class="mb-2">
+                        Update your Gitcoin Passport Score <a href="https://grant-explorer.gitcoin.co/#/round/1/0x1b165fe4da6bc58ab8370ddc763d367d29f50ef0/passport/connect" target="_blank">on this page</a> by midnight Friday, Feb 10th UTC.
+                      </li>
+                    </ol>
+                    </div>
+
+                    Thanks for your patience here as we build these new protocols in public.
+
+                </div> -->
+
+                <div class="row mb-5 d-flex">
+                <div class="col-12 col-lg-6">
+                  <h3><a href="/grants/explorer" title="View All Grants">View All Grants</a></h3>
+                </div>
+                <div class="mr-auto ml-auto"></div>
+                <div class="col-12 col-lg-6">
+                  <h3 class="grants-program-text"><a href="https://link.gitcoin.co/grants-program-news" title="Grants Program News">Grants Program News</a></h3>
+                </div>
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+        {% csrf_token %}
+
+    </div>
+
+  {% include 'shared/footer.html' %}
+  {% include 'shared/footer_scripts.html' with slim=1 %}
+  {% include 'grants/shared/shared_scripts.html' %}
+  {{collections|json_script:"collections-object"}}
+  {{grant_bg.inline_css|json_script:"inline_css"}}
+  <script src='https://cdn.jsdelivr.net/npm/quill@1.3.6/dist/quill.min.js'></script>
+  <script src='https://cdn.jsdelivr.net/npm/vue-quill-editor@3.0.6/dist/vue-quill-editor.js'></script>
+  {% bundle js file grants-landing-quill-image-extend-module %}
+    <script>
+      // use webpack to build ImageExtend
+      import { QuillWatch, ImageExtend } from 'quill-image-extend-module';
+      // set to global context
+      window.QuillWatch = QuillWatch;
+      window.ImageExtend = ImageExtend;
+    </script>
+  {% endbundle %}
+  <script>
+    document.current_type = "{{ type|default:'collections' }}";
+    document.selected_category = "{{ selected_category }}";
+    document.network = "{{ network}}";
+    document.keyword = "{{ keyword }}";
+    document.following = {{ following|yesno:'true,false' }};
+    document.idle_grants = {{ idle_grants|yesno:'true,false' }};
+    document.show_contributions = {{ show_contributions|yesno:'true,false' }};
+    document.featured = {{ featured|yesno:'true,false' }};
+    document.collection_id = {{ collection_id|default:'null' }};
+    document.collections = JSON.parse(document.getElementById('collections-object').textContent);
+    document.activePage = "{{ active }}";
+    document.round_start_date = ({{round_start_date|date:'U' }}*1000);
+    document.round_end_date = ({{round_end_date|date:'U' }}*1000);
+
+    {% if clr_round %}
+      document.round_num = "{{clr_round.round_num}}";
+      document.sub_round_slug = "{{clr_round.sub_round_slug}}";
+      document.customer_name = "{{clr_round.customer_name}}";
+    {% endif %}
+    let base_style = {
+        bg: '/static/v2/images/bg/{{styles.bg}}',
+        size: "{{styles.bg_size}}",
+        color: "{{styles.bg_color}}",
+        background_image: "url('/static/v2/images/bg/{{bottom_back}}')"
+      };
+
+    document.all_type_styles = {% if all_styles %} {{ all_styles|safe }} {% else %} [] {% endif %};
+
+    document.all_routing_policies = {% if all_routing_policies %} {{ all_routing_policies | safe}} {% else %} [] {% endif %};
+    document.all_routing_policies.push(base_style);
+
+    {% if grant_bg %}
+      document.current_style = {
+        banner_image: "{{ grant_bg.banner_image }}",
+        background_image: " url('{{grant_bg.background_image }}')",
+        inline_css: JSON.parse(document.getElementById('inline_css').textContent)
+      }
+    {% else %}
+      document.current_style = base_style
+    {% endif %}
+
+  </script>
+  {% include 'shared/activity_scripts.html' %}
+
+  <script src="{% static "v2/js/abi.js" %}"></script>
+  <script src="{% static "v2/js/pages/shared_bounty_mutation_estimate_gas.js" %}"></script>
+  <script src="{% static "v2/js/why-this-matters-modal.js" %}"></script>
+  <script src="{% static "v2/js/grants/components.js" %}"></script>
+  <script src="{% static "v2/js/grants/_detail-component.js" %}"></script>
+  <!-- <script src="{% static "v2/js/grants/funding.js" %}"></script> -->
+  <script src="{% static "v2/js/grants/landingpage.js" %}"></script>
+  {% bundle merge_js file discover_grants_landing_svgs %}
+    <script src="{% static "v2/js/lib/svgator_player.js" %}"></script>
+    <script>
+      // undiscovered gems
+      __SVGATOR_PLAYER__.build({"root":"eTq8EWmAaN61","animations":[{"duration":2500,"direction":1,"iterations":1,"fill":1,"alternate":false,"speed":1,"elements":{"eTq8EWmAaN67":{"transform":{"keys":{"o":[{"t":0,"v":{"x":102,"y":70,"type":"corner"}},{"t":1000,"v":{"x":77,"y":70,"type":"corner"}},{"t":1800,"v":{"x":77,"y":70,"type":"corner"}},{"t":2500,"v":{"x":102,"y":70,"type":"corner"}}]}}},"eTq8EWmAaN68":{"fill":[{"t":0,"v":{"t":"c","v":{"r":255,"g":255,"b":255,"a":1}}},{"t":1300,"v":{"t":"c","v":{"r":201,"g":184,"b":255,"a":1}}},{"t":2400,"v":{"t":"c","v":{"r":255,"g":255,"b":255,"a":1}}}]},"eTq8EWmAaN69":{"transform":{"data":{"o":{"x":96.515503,"y":70.476799,"type":"corner"},"t":{"x":-96.515503,"y":-70.476799}},"keys":{"s":[{"t":0,"v":{"x":1,"y":1}},{"t":250,"v":{"x":1.2,"y":1.2}},{"t":400,"v":{"x":1,"y":1}}]}}},"eTq8EWmAaN611":{"fill":[{"t":300,"v":null},{"t":800,"v":{"t":"c","v":{"r":127,"g":81,"b":255,"a":1}}}]},"eTq8EWmAaN612":{"fill":[{"t":400,"v":null},{"t":900,"v":{"t":"c","v":{"r":187,"g":162,"b":255,"a":1}}}]},"eTq8EWmAaN613":{"fill":[{"t":500,"v":null},{"t":1000,"v":{"t":"c","v":{"r":164,"g":131,"b":255,"a":1}}}]},"eTq8EWmAaN614":{"fill":[{"t":600,"v":null},{"t":1100,"v":{"t":"c","v":{"r":130,"g":85,"b":255,"a":1}}}]},"eTq8EWmAaN615":{"fill":[{"t":600,"v":null},{"t":1100,"v":{"t":"c","v":{"r":114,"g":63,"b":255,"a":1}}}]},"eTq8EWmAaN616":{"fill":[{"t":100,"v":null},{"t":600,"v":{"t":"c","v":{"r":115,"g":71,"b":236,"a":1}}}]},"eTq8EWmAaN617":{"fill":[{"t":200,"v":null},{"t":700,"v":{"t":"c","v":{"r":103,"g":48,"b":255,"a":1}}}]},"eTq8EWmAaN624":{"transform":{"data":{"o":{"x":133.526005,"y":55.8678,"type":"corner"},"t":{"x":-133.526005,"y":-55.8678}},"keys":{"s":[{"t":0,"v":{"x":1,"y":1}},{"t":400,"v":{"x":0,"y":0}},{"t":800,"v":{"x":1,"y":1}},{"t":1200,"v":{"x":0,"y":0}},{"t":1600,"v":{"x":1,"y":1}},{"t":2000,"v":{"x":0,"y":0}},{"t":2500,"v":{"x":0.8333333333333334,"y":0.8333333333333334}}]}},"fill":[{"t":0,"v":{"t":"c","v":{"r":255,"g":255,"b":255,"a":1}}},{"t":1300,"v":{"t":"c","v":{"r":91,"g":241,"b":205,"a":1}}},{"t":2500,"v":{"t":"c","v":{"r":255,"g":255,"b":255,"a":1}}}],"stroke":[{"t":0,"v":{"t":"c","v":{"r":2,"g":226,"b":172,"a":1}}},{"t":1300,"v":{"t":"c","v":{"r":91,"g":241,"b":205,"a":1}}},{"t":2500,"v":{"t":"c","v":{"r":2,"g":226,"b":172,"a":1}}}]},"eTq8EWmAaN625":{"transform":{"data":{"o":{"x":137.17813,"y":36.388,"type":"corner"},"t":{"x":-137.422501,"y":-36.388}},"keys":{"s":[{"t":0,"v":{"x":1,"y":1}},{"t":400,"v":{"x":0,"y":0}},{"t":800,"v":{"x":1,"y":1}},{"t":1200,"v":{"x":0,"y":0}},{"t":1600,"v":{"x":1,"y":1}},{"t":2000,"v":{"x":0,"y":0}},{"t":2500,"v":{"x":0.8333333333333334,"y":0.8333333333333334}}]}}},"eTq8EWmAaN626":{"transform":{"data":{"o":{"x":121.838501,"y":24.70115,"type":"corner"},"t":{"x":-121.838501,"y":-24.70115}},"keys":{"s":[{"t":0,"v":{"x":1,"y":1}},{"t":400,"v":{"x":1,"y":1}},{"t":1000,"v":{"x":0,"y":0}},{"t":1400,"v":{"x":1,"y":1}},{"t":1800,"v":{"x":0,"y":0}},{"t":2200,"v":{"x":1,"y":1}},{"t":2500,"v":{"x":0.25,"y":0.25}}]}}},"eTq8EWmAaN629":{"transform":{"data":{"o":{"x":64.960652,"y":82.846649,"type":"corner"},"t":{"x":-64.960651,"y":-82.846649}},"keys":{"r":[{"t":0,"v":0},{"t":2500,"v":300}]}}},"eTq8EWmAaN640":{"transform":{"keys":{"o":[{"t":0,"v":{"x":93,"y":70,"type":"corner"}},{"t":1000,"v":{"x":103,"y":70,"type":"corner"}},{"t":1800,"v":{"x":103,"y":70,"type":"corner"}},{"t":2500,"v":{"x":93,"y":70,"type":"corner"}}]}}}}}],"options":{"start":"hover","hover":"freeze","click":null,"scroll":null,"font":"embed","exportedIds":"unique","svgFormat":"animated","title":"gems"},"animationSettings":{"duration":2500,"direction":1,"iterations":1,"fill":1,"alternate":false,"speed":1}});
+
+      // newest grants
+      __SVGATOR_PLAYER__.build({"root":"eoa9zOvTA3l1","animations":[{"duration":2500,"direction":1,"iterations":1,"fill":1,"alternate":false,"speed":1,"elements":{"eoa9zOvTA3l7":{"fill":[{"t":0,"v":{"t":"c","v":{"r":255,"g":255,"b":255,"a":1}}},{"t":1300,"v":{"t":"c","v":{"r":201,"g":184,"b":255,"a":1}}},{"t":2500,"v":{"t":"c","v":{"r":255,"g":255,"b":255,"a":1}}}]},"eoa9zOvTA3l9":{"transform":{"data":{"o":{"x":87.778347,"y":103.801804,"type":"corner"},"t":{"x":-87.778347,"y":-103.801803}},"keys":{"s":[{"t":0,"v":{"x":1,"y":1}},{"t":100,"v":{"x":1.2,"y":1.2}},{"t":200,"v":{"x":1,"y":1}}]}}},"eoa9zOvTA3l10":{"fill":[{"t":0,"v":null},{"t":1300,"v":{"t":"c","v":{"r":255,"g":255,"b":255,"a":1}}},{"t":2500,"v":null}]},"eoa9zOvTA3l11":{"fill":[{"t":0,"v":null},{"t":1300,"v":{"t":"c","v":{"r":255,"g":255,"b":255,"a":1}}},{"t":2500,"v":null}]},"eoa9zOvTA3l12":{"transform":{"data":{"o":{"x":56.671852,"y":80.622043,"type":"corner"},"t":{"x":-127.966,"y":-64.933798}},"keys":{"s":[{"t":100,"v":{"x":0,"y":0}},{"t":500,"v":{"x":1,"y":1}},{"t":1000,"v":{"x":0.42,"y":0.42}},{"t":1500,"v":{"x":1,"y":1}},{"t":2000,"v":{"x":0,"y":0}}]}},"fill":[{"t":0,"v":null},{"t":1300,"v":{"t":"c","v":{"r":140,"g":101,"b":247,"a":1}}},{"t":2500,"v":null}]},"eoa9zOvTA3l13":{"transform":{"data":{"o":{"x":124.354075,"y":94.980202,"type":"corner"},"t":{"x":-127.966,"y":-64.933798}},"keys":{"s":[{"t":0,"v":{"x":0.42,"y":0.42}},{"t":600,"v":{"x":1,"y":1}},{"t":1100,"v":{"x":0,"y":0}},{"t":1600,"v":{"x":1,"y":1}},{"t":2000,"v":{"x":0.422636,"y":0.422636}}]}},"fill":[{"t":0,"v":null},{"t":1300,"v":{"t":"c","v":{"r":2,"g":226,"b":172,"a":1}}},{"t":2500,"v":null}]},"eoa9zOvTA3l14":{"transform":{"data":{"o":{"x":127.966,"y":64.933798,"type":"corner"},"t":{"x":-127.966,"y":-64.933798}},"keys":{"s":[{"t":100,"v":{"x":1,"y":1}},{"t":600,"v":{"x":0,"y":0}},{"t":1100,"v":{"x":1,"y":1}},{"t":1600,"v":{"x":0,"y":0}},{"t":2000,"v":{"x":1,"y":1}}]}},"fill":[{"t":0,"v":null},{"t":1300,"v":{"t":"c","v":{"r":140,"g":101,"b":247,"a":1}}},{"t":2500,"v":null}]},"eoa9zOvTA3l15":{"transform":{"data":{"o":{"x":67.648098,"y":55.44655,"type":"corner"},"t":{"x":-67.648098,"y":-55.44655}},"keys":{"s":[{"t":0,"v":{"x":1,"y":1}},{"t":500,"v":{"x":0,"y":0}},{"t":1000,"v":{"x":1,"y":1}},{"t":1500,"v":{"x":0,"y":0}},{"t":2000,"v":{"x":1,"y":1}}]}}},"eoa9zOvTA3l16":{"transform":{"data":{"o":{"x":88.218098,"y":23.1331,"type":"corner"},"t":{"x":-88.218098,"y":-23.1331}},"keys":{"s":[{"t":0,"v":{"x":1,"y":1}},{"t":500,"v":{"x":1.2,"y":1.2}},{"t":1000,"v":{"x":1,"y":1}},{"t":1500,"v":{"x":1.2,"y":1.2}},{"t":2000,"v":{"x":1,"y":1}}]}},"fill":[{"t":0,"v":null},{"t":1300,"v":{"t":"c","v":{"r":2,"g":226,"b":172,"a":1}}},{"t":2500,"v":null}]},"eoa9zOvTA3l17":{"transform":{"data":{"o":{"x":59.364601,"y":27.6205,"type":"corner"},"t":{"x":-59.364601,"y":-27.6205}},"keys":{"s":[{"t":0,"v":{"x":1,"y":1}},{"t":300,"v":{"x":0.5,"y":0.5}},{"t":700,"v":{"x":1,"y":1}},{"t":1100,"v":{"x":1,"y":1}},{"t":1400,"v":{"x":0.5,"y":0.5}},{"t":1800,"v":{"x":1,"y":1}}]}}},"eoa9zOvTA3l18":{"transform":{"data":{"o":{"x":118.991005,"y":30.313549,"type":"corner"},"t":{"x":-118.991005,"y":-30.313549}},"keys":{"s":[{"t":0,"v":{"x":1,"y":1}},{"t":400,"v":{"x":1.4,"y":1.4}},{"t":800,"v":{"x":1,"y":1}},{"t":1200,"v":{"x":1,"y":1}},{"t":1600,"v":{"x":1.4,"y":1.4}},{"t":2000,"v":{"x":1,"y":1}}]}}},"eoa9zOvTA3l19":{"stroke":[{"t":0,"v":{"t":"c","v":{"r":2,"g":226,"b":172,"a":1}}},{"t":1300,"v":{"t":"c","v":{"r":255,"g":255,"b":255,"a":1}}},{"t":2500,"v":{"t":"c","v":{"r":2,"g":226,"b":172,"a":1}}}]},"eoa9zOvTA3l20":{"stroke":[{"t":0,"v":{"t":"c","v":{"r":2,"g":226,"b":172,"a":1}}},{"t":1300,"v":{"t":"c","v":{"r":255,"g":255,"b":255,"a":1}}},{"t":2500,"v":{"t":"c","v":{"r":2,"g":226,"b":172,"a":1}}}]},"eoa9zOvTA3l21":{"stroke":[{"t":0,"v":{"t":"c","v":{"r":2,"g":226,"b":172,"a":1}}},{"t":1300,"v":{"t":"c","v":{"r":255,"g":255,"b":255,"a":1}}},{"t":2500,"v":{"t":"c","v":{"r":2,"g":226,"b":172,"a":1}}}]},"eoa9zOvTA3l22":{"transform":{"data":{"o":{"x":37.822449,"y":54.291251,"type":"corner"},"t":{"x":-37.822448,"y":-54.291251}},"keys":{"r":[{"t":0,"v":0},{"t":2500,"v":360}]}}},"eoa9zOvTA3l25":{"transform":{"keys":{"o":[{"t":0,"v":{"x":93,"y":69,"type":"corner"}},{"t":1300,"v":{"x":79,"y":69,"type":"corner"}},{"t":2500,"v":{"x":93,"y":69,"type":"corner"}}]}}},"eoa9zOvTA3l26":{"transform":{"keys":{"o":[{"t":0,"v":{"x":84,"y":69,"type":"corner"}},{"t":1300,"v":{"x":97,"y":69,"type":"corner"}},{"t":2500,"v":{"x":84,"y":69,"type":"corner"}}]}}}}}],"options":{"start":"hover","hover":"freeze","click":null,"scroll":null,"font":"embed","exportedIds":"unique","svgFormat":"animated","title":"grants"},"animationSettings":{"duration":2500,"direction":1,"iterations":1,"fill":1,"alternate":false,"speed":1}});
+
+      // trending
+      __SVGATOR_PLAYER__.build({"root":"eu5dy6iXLof1","animations":[{"duration":2500,"direction":1,"iterations":1,"fill":1,"alternate":false,"speed":1,"elements":{"eu5dy6iXLof7":{"fill":[{"t":0,"v":{"t":"c","v":{"r":255,"g":255,"b":255,"a":1}}},{"t":1200,"v":{"t":"c","v":{"r":201,"g":184,"b":255,"a":1}}},{"t":2500,"v":{"t":"c","v":{"r":255,"g":255,"b":255,"a":1}}}]},"eu5dy6iXLof9":{"fill":[{"t":0,"v":null},{"t":1200,"v":{"t":"c","v":{"r":255,"g":255,"b":255,"a":1}}},{"t":2500,"v":null}]},"eu5dy6iXLof11":{"transform":{"data":{"o":{"x":86.153851,"y":55.433099,"type":"corner"},"t":{"x":-86.153851,"y":-55.433099}},"keys":{"s":[{"t":0,"v":{"x":1,"y":1}},{"t":100,"v":{"x":1.2,"y":1.2}},{"t":200,"v":{"x":1,"y":1}}]}}},"eu5dy6iXLof12":{"transform":{"data":{"o":{"x":131.130005,"y":80.062207,"type":"corner"},"t":{"x":-131.130005,"y":-80.062206}},"keys":{"s":[{"t":100,"v":{"x":1,"y":1}},{"t":200,"v":{"x":1.1,"y":1.1}},{"t":300,"v":{"x":1,"y":1}}]}}},"eu5dy6iXLof13":{"fill":[{"t":0,"v":null},{"t":1200,"v":{"t":"c","v":{"r":255,"g":255,"b":255,"a":1}}},{"t":2500,"v":null}]},"eu5dy6iXLof14":{"transform":{"data":{"o":{"x":130.483021,"y":80.062208,"type":"corner"},"t":{"x":-130.483021,"y":-80.294159}},"keys":{"s":[{"t":500,"v":{"x":1,"y":1}},{"t":600,"v":{"x":1.2,"y":1.2}},{"t":700,"v":{"x":0.9,"y":0.9}},{"t":800,"v":{"x":1,"y":1}},{"t":900,"v":{"x":1.2,"y":1.2}},{"t":1000,"v":{"x":0.9,"y":0.9}},{"t":1100,"v":{"x":1,"y":1}},{"t":1200,"v":{"x":1.2,"y":1.2}},{"t":1300,"v":{"x":0.9,"y":0.9}},{"t":1400,"v":{"x":1,"y":1}}]}},"fill":[{"t":0,"v":null},{"t":1200,"v":{"t":"c","v":{"r":91,"g":241,"b":205,"a":1}}},{"t":2500,"v":null}]},"eu5dy6iXLof15":{"d":[{"t":450,"v":["M",136.755797,100.778782,"Q",130.224613,103.272531,124.187806,99.448046,"C",123.596807,98.049946,122.974612,96.693888,122.974612,94.166288,"C",122.947612,87.874388,126.921612,83.572288,127.996612,82.496688,"C",128.345612,82.120288,128.721612,81.743888,129.070612,81.367388,"C",129.016612,82.631188,128.882612,85.884688,129.311612,88.681088,"C",129.392612,89.218888,129.607612,90.079288,130.224612,90.966588,"C",130.708612,91.638788,131.406612,92.176588,132.238612,92.257288,"C",133.501612,92.364788,134.628612,91.316188,135.058612,90.133088,"C",135.488612,88.949988,135.380612,87.632388,135.273612,86.368688,"C",135.541612,86.691288,135.783612,87.013988,136.052612,87.336688,"C",136.777612,88.358388,138.227612,90.751488,138.495612,94.139388,"C",138.737612,97.285388,137.265797,99.649682,136.755797,100.778782,"Z"]},{"t":1000,"v":["M",136.052611,101.42741,"Q",129.521427,103.921159,123.942953,100.220188,"C",123.351954,98.822088,122.974612,96.693888,122.974612,94.166288,"C",122.947612,87.874388,126.921612,83.572288,127.996612,82.496688,"C",128.345612,82.120288,128.721612,81.743888,129.070612,81.367388,"C",129.016612,82.631188,128.882612,85.884688,129.311612,88.681088,"C",129.392612,89.218888,129.607612,90.079288,130.224612,90.966588,"C",130.708612,91.638788,131.406612,92.176588,132.238612,92.257288,"C",133.501612,92.364788,134.628612,91.316188,135.058612,90.133088,"C",135.488612,88.949988,135.380612,87.632388,135.273612,86.368688,"C",135.541612,86.691288,135.783612,87.013988,136.052612,87.336688,"C",136.777612,88.358388,138.227612,90.751488,138.495612,94.139388,"C",138.737612,97.285388,136.562611,100.29831,136.052611,101.42741,"Z"]},{"t":1100,"v":["M",136.052612,101.130783,"Q",129.521428,103.624532,124.130712,99.953027,"C",123.539713,98.554927,122.974612,96.693888,122.974612,94.166288,"C",122.947612,87.874388,126.921612,83.572288,127.996612,82.496688,"C",128.345612,82.120288,128.721612,81.743888,129.070612,81.367388,"C",129.016612,82.631188,128.882612,85.884688,129.311612,88.681088,"C",129.392612,89.218888,129.607612,90.079288,130.224612,90.966588,"C",130.708612,91.638788,131.406612,92.176588,132.238612,92.257288,"C",133.501612,92.364788,134.628612,91.316188,135.058612,90.133088,"C",135.488612,88.949988,135.380612,87.632388,135.273612,86.368688,"C",135.541612,86.691288,135.783612,87.013988,136.052612,87.336688,"C",136.777612,88.358388,138.227612,90.751488,138.495612,94.139388,"C",138.737612,97.285388,136.562612,100.001683,136.052612,101.130783,"Z"]},{"t":1200,"v":["M",136.052612,101.100335,"Q",129.311612,102.837754,124.130712,99.953027,"C",123.539713,98.554927,122.974612,96.693888,122.974612,94.166288,"C",122.947612,87.874388,126.921612,83.572288,127.996612,82.496688,"C",128.345612,82.120288,128.721612,81.743888,129.070612,81.367388,"C",129.016612,82.631188,128.882612,85.884688,129.311612,88.681088,"C",129.392612,89.218888,129.607612,90.079288,130.224612,90.966588,"C",130.708612,91.638788,131.406612,92.176588,132.238612,92.257288,"C",133.501612,92.364788,134.628612,91.316188,135.058612,90.133088,"C",135.488612,88.949988,135.380612,87.632388,135.273612,86.368688,"C",135.541612,86.691288,135.783612,87.013988,136.052612,87.336688,"C",136.777612,88.358388,138.227612,90.751488,138.495612,94.139388,"C",138.737612,97.285388,136.562612,99.971235,136.052612,101.100335,"Z"]},{"t":1300,"v":["M",135.40651,101.570825,"Q",129.070612,103.418184,123.942952,100.188082,"C",123.351953,98.789982,122.974612,96.693888,122.974612,94.166288,"C",122.947612,87.874388,126.921612,83.572288,127.996612,82.496688,"C",128.345612,82.120288,128.721612,81.743888,129.070612,81.367388,"C",129.016612,82.631188,128.882612,85.884688,129.311612,88.681088,"C",129.392612,89.218888,129.607612,90.079288,130.224612,90.966588,"C",130.708612,91.638788,131.406612,92.176588,132.238612,92.257288,"C",133.501612,92.364788,134.628612,91.316188,135.058612,90.133088,"C",135.488612,88.949988,135.380612,87.632388,135.273612,86.368688,"C",135.541612,86.691288,135.783612,87.013988,136.052612,87.336688,"C",136.777612,88.358388,138.227612,90.751488,138.495612,94.139388,"C",138.737612,97.285388,135.91651,100.441725,135.40651,101.570825,"Z"]}],"transform":{"data":{"t":{"x":-130.831951,"y":-91.038002}},"keys":{"o":[{"t":500,"v":{"x":130.488823,"y":91.103855,"type":"corner"}},{"t":600,"v":{"x":131.135466,"y":92.734456,"type":"corner"}},{"t":700,"v":{"x":130.487103,"y":89.914769,"type":"corner"}},{"t":800,"v":{"x":130.831997,"y":90.935625,"type":"corner"}},{"t":900,"v":{"x":131.136989,"y":92.787387,"type":"corner"}},{"t":1000,"v":{"x":131.134099,"y":89.478332,"type":"corner"}},{"t":1100,"v":{"x":131.135239,"y":90.833249,"type":"corner"}},{"t":1200,"v":{"x":131.136985,"y":93.034298,"type":"corner"}},{"t":1300,"v":{"x":131.134099,"y":89.507227,"type":"corner"}},{"t":1350,"v":{"x":131.134327,"y":90.045817,"type":"corner"}}],"s":[{"t":500,"v":{"x":1,"y":1}},{"t":600,"v":{"x":1.2,"y":1.2}},{"t":700,"v":{"x":0.9,"y":0.9}},{"t":800,"v":{"x":1,"y":1}},{"t":900,"v":{"x":1.2,"y":1.2}},{"t":1000,"v":{"x":0.9,"y":0.9}},{"t":1100,"v":{"x":1,"y":1}},{"t":1200,"v":{"x":1.2,"y":1.2}},{"t":1300,"v":{"x":0.9,"y":0.9}},{"t":1400,"v":{"x":1,"y":1}}]}},"fill":[{"t":0,"v":null},{"t":1200,"v":{"t":"c","v":{"r":230,"g":255,"b":249,"a":1}}},{"t":2500,"v":null}]},"eu5dy6iXLof16":{"transform":{"data":{"s":{"x":1.02286,"y":1}},"keys":{"o":[{"t":0,"v":{"x":77,"y":69,"type":"corner"}},{"t":1200,"v":{"x":88,"y":69,"type":"corner"}},{"t":2500,"v":{"x":77,"y":69,"type":"corner"}}]}}},"eu5dy6iXLof17":{"transform":{"keys":{"o":[{"t":0,"v":{"x":92,"y":69,"type":"corner"}},{"t":1200,"v":{"x":112,"y":69,"type":"corner"}},{"t":2500,"v":{"x":92,"y":69,"type":"corner"}}]}}}}}],"options":{"start":"hover","hover":"freeze","click":null,"scroll":null,"font":"embed","exportedIds":"unique","svgFormat":"animated","title":"trend"},"animationSettings":{"duration":2500,"direction":1,"iterations":1,"fill":1,"alternate":false,"speed":1}});
+    </script>
+  {% endbundle %}
+</body>
+
+
+
+</html>

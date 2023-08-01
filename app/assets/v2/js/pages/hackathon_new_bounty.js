@@ -17,13 +17,21 @@ Vue.mixin({
         return vm.form.issueDetails;
       }
 
-      if (url.indexOf('github.com/') < 0) {
+      let ghIssueUrl;
+
+      try {
+        ghIssueUrl = new URL(url);
+      } catch (e) {
         vm.form.issueDetails = null;
         vm.$set(vm.errors, 'issueDetails', 'Please paste a github issue url');
         return;
       }
 
-      let ghIssueUrl = new URL(url);
+      if (ghIssueUrl.host != 'github.com') {
+        vm.form.issueDetails = null;
+        vm.$set(vm.errors, 'issueDetails', 'Please paste a github issue url');
+        return;
+      }
 
       vm.orgSelected = '';
 
@@ -189,6 +197,10 @@ Vue.mixin({
         case '270895':
           // casper
           type = 'casper_ext';
+          break;
+        case '1155':
+          // cosmos
+          type = 'cosmos_ext';
           break;
         case '666':
           // paypal

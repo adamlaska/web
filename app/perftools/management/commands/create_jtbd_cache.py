@@ -52,7 +52,8 @@ def create_jtbd_earn_cache():
     thirty_days_ago = timezone.now() - datetime.timedelta(days=30)
 
     bounties = list(Bounty.objects.filter(
-        network='mainnet', event=None, idx_status='open', created_on__gt=thirty_days_ago
+        network='mainnet', event=None, idx_status='open', created_on__gt=thirty_days_ago,
+        current_bounty=True
     ).order_by('-_val_usd_db').extra(
         select={'val_usd_db': '_val_usd_db'}
     ).values(
@@ -61,11 +62,11 @@ def create_jtbd_earn_cache():
 
     featured_grant = None
 
-    if not settings.DEBUG:
+    if settings.ENV == 'prod':
         # WalletConnect
         grant_id = 275
     else:
-        grant_id = 19
+        grant_id = 1
 
     try:
         grant_data = Grant.objects.filter(pk=grant_id).values(

@@ -57,16 +57,20 @@ def modulo(num, val):
         int: The modulo of number and value.
 
     """
+    if num and val:
+        return num % val
+    return 0
 
-    return num % val
 
 @register.simple_tag
 def is_team_member(grant, profile):
     return is_grant_team_member(grant, profile)
 
+
 @register.simple_tag
 def is_grants_path(path):
     return path.lower().startswith('/grants')
+
 
 @register.simple_tag
 def is_favorite(grant, profile):
@@ -74,3 +78,17 @@ def is_favorite(grant, profile):
         return grant.favorite(profile)
 
     return False
+
+
+@register.filter
+def humanize_short(number):
+    try:
+        number = float(number)
+        if number > 1000000:
+            number = str(round(number / 100000) / 10) + 'M'
+        elif number > 1000:
+            number = str(round(number / 1000)) + 'K'
+    except:
+        pass
+
+    return number

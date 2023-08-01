@@ -31,9 +31,9 @@ from django.utils.translation import gettext_lazy as _
 import twitter
 from economy.utils import convert_token_to_usdt
 from git.utils import delete_issue_comment, org_name, patch_issue_comment, post_issue_comment, repo_name
+from marketing.common.utils import allowed_to_send_email
 from marketing.mails import featured_funded_bounty, send_mail, setup_lang, tip_email
 from marketing.models import GithubOrgToTwitterHandleMapping
-from marketing.utils import should_suppress_notification_email
 from pyshorteners import Shortener
 from retail.emails import render_new_kudos_email
 from slackclient import SlackClient
@@ -83,148 +83,6 @@ def github_org_to_twitter_tags(github_org):
     return twitter_tags
 
 
-def maybe_market_to_twitter(bounty, event_name):
-    """Tweet the specified Bounty event.
-
-    Args:
-        bounty (dashboard.models.Bounty): The Bounty to be marketed.
-        event_name (str): The name of the event.
-
-    Returns:
-        bool: Whether or not the twitter notification was sent successfully.
-
-    """
-    if not bounty.is_notification_eligible(var_to_check=settings.TWITTER_CONSUMER_KEY):
-        return False
-
-    api = twitter.Api(
-        consumer_key=settings.TWITTER_CONSUMER_KEY,
-        consumer_secret=settings.TWITTER_CONSUMER_SECRET,
-        access_token_key=settings.TWITTER_ACCESS_TOKEN,
-        access_token_secret=settings.TWITTER_ACCESS_SECRET,
-    )
-    tweet_txts = [
-        "Earn {} {} {} now by completing this task: \n\n{}",
-        "Oppy to earn {} {} {} for completing this task: \n\n{}",
-        "Is today the day you (a) boost your OSS rep (b) make some extra cash? 🤔 {} {} {} \n\n{}",
-    ]
-    if event_name == 'remarket_bounty':
-        tweet_txts = tweet_txts + [
-            "Gitcoin open task of the day is worth {} {} {} ⚡️ \n\n{}",
-            "Task of the day 💰 {} {} {} ⚡️ \n\n{}",
-        ]
-    elif event_name == 'new_bounty':
-        tweet_txts = tweet_txts + [
-            "Extra! Extra 🗞🗞 New Funded Issue, Read all about it 👇  {} {} {} \n\n{}",
-            "Hot off the blockchain! 🔥🔥🔥 There's a new task worth {} {} {} \n\n{}",
-            "💰 New Task Alert.. 💰 Earn {} {} {} for working on this 👇 \n\n{}",
-        ]
-    elif event_name == 'increased_bounty':
-        tweet_txts = [
-            'Increased Payout on {} {} {}\n{}'
-        ]
-    elif event_name == 'start_work':
-        tweet_txts = [
-            'Work started on {} {} {}\n{}'
-        ]
-    elif event_name == 'stop_work':
-        tweet_txts = [
-            'Work stopped on {} {} {}\n{}'
-        ]
-    elif event_name == 'work_done':
-        tweet_txts = [
-            'Work done on {} {} {}\n{}'
-        ]
-    elif event_name == 'work_submitted':
-        tweet_txts = [
-            'Work submitted on {} {} {}\n{}'
-        ]
-    elif event_name == 'killed_bounty':
-        tweet_txts = [
-            'Bounty killed on {} {} {}\n{}'
-        ]
-    elif event_name == 'worker_rejected':
-        tweet_txts = [
-            'Worked rejected on {} {} {}\n{}'
-        ]
-    elif event_name == 'worker_approved':
-        tweet_txts = [
-            'Worked approved on {} {} {}\n{}'
-        ]
-
-    random.shuffle(tweet_txts)
-    tweet_txt = tweet_txts[0]
-    utm = ''
-    if bounty.metadata.get('hyper_tweet_counter', False):
-        utm = f'utm_source=hypercharge-auto&utm_medium=twitter&utm_campaign={bounty.title}'
-
-    url = f'{bounty.get_absolute_url()}?{utm}'
-    is_short = False
-    for shortener in ['Tinyurl', 'Adfly', 'Isgd', 'QrCx']:
-        try:
-            if not is_short:
-                shortener = Shortener(shortener)
-                response = shortener.short(url)
-                if response != 'Error' and 'http' in response:
-                    url = response
-                is_short = True
-        except Exception:
-            pass
-
-    new_tweet = tweet_txt.format(
-        round(bounty.get_natural_value(), 4),
-        bounty.token_name,
-        f"({bounty.value_in_usdt_now} USD @ ${round(convert_token_to_usdt(bounty.token_name),2)}/{bounty.token_name})" if bounty.value_in_usdt_now else "",
-        url
-    )
-    new_tweet = new_tweet + " " + github_org_to_twitter_tags(bounty.org_name)  # twitter tags
-    if bounty.keywords:  # hashtags
-        for keyword in bounty.keywords.split(','):
-            _new_tweet = new_tweet + " #" + str(keyword).lower().strip()
-            if len(_new_tweet) < 140:
-                new_tweet = _new_tweet
-
-    try:
-        api.PostUpdate(new_tweet)
-    except Exception as e:
-        print(e)
-        return False
-    return True
-
-
-def maybe_market_to_slack(bounty, event_name):
-    """Send a Slack message for the specified Bounty.
-
-    Args:
-        bounty (dashboard.models.Bounty): The Bounty to be marketed.
-        event_name (str): The name of the event.
-
-    Returns:
-        bool: Whether or not the Slack notification was sent successfully.
-
-    """
-    if not bounty.is_notification_eligible(var_to_check=settings.SLACK_TOKEN):
-        return False
-
-    msg = build_message_for_integration(bounty, event_name)
-    if not msg:
-        return False
-
-    try:
-        channel = 'notif-gitcoin'
-        sc = SlackClient(settings.SLACK_TOKEN)
-        sc.api_call(
-            "chat.postMessage",
-            channel=channel,
-            text=msg,
-            icon_url=settings.GITCOIN_SLACK_ICON_URL,
-        )
-    except Exception as e:
-        print(e)
-        return False
-    return True
-
-
 def build_message_for_integration(bounty, event_name):
     """Build message to be posted to integrated service (e.g. slack).
 
@@ -255,56 +113,6 @@ def build_message_for_integration(bounty, event_name):
           f"\n*Bounty value*: {round(bounty.get_natural_value(), 4)} {bounty.token_name} {usdt_details}" \
           f"\n{bounty.get_absolute_url()}"
     return msg
-
-
-def maybe_market_to_user_slack(bounty, event_name):
-    from dashboard.tasks import maybe_market_to_user_slack
-    maybe_market_to_user_slack.delay(bounty.pk, event_name)
-
-
-def maybe_market_to_user_slack_helper(bounty, event_name):
-    """Send a Slack message to the user's slack channel for the specified Bounty.
-
-    Args:
-        bounty (dashboard.models.Bounty): The Bounty to be marketed.
-        event_name (str): The name of the event.
-
-    Returns:
-        bool: Whether or not the Slack notification was sent successfully.
-
-    """
-    from dashboard.models import Profile
-    if bounty.get_natural_value() < 0.0001:
-        return False
-    if bounty.network != settings.ENABLE_NOTIFICATIONS_ON_NETWORK:
-        return False
-
-    msg = build_message_for_integration(bounty, event_name)
-    if not msg:
-        return False
-
-    url = bounty.github_url
-    sent = False
-    try:
-        repo = org_name(url) + '/' + repo_name(url)
-        subscribers = Profile.objects.filter(slack_repos__contains=[repo])
-        subscribers = subscribers & Profile.objects.exclude(slack_token='', slack_channel='')
-        for subscriber in subscribers:
-            try:
-                sc = SlackClient(subscriber.slack_token)
-                sc.api_call(
-                    "chat.postMessage",
-                    channel=subscriber.slack_channel,
-                    text=msg,
-                    icon_url=settings.GITCOIN_SLACK_ICON_URL,
-                )
-                sent = True
-            except Exception as e:
-                print(e)
-    except Exception as e:
-        print(e)
-
-    return sent
 
 
 def maybe_market_tip_to_email(tip, emails):
@@ -409,7 +217,7 @@ def maybe_market_kudos_to_email(kudos_transfer):
             html, text = render_new_kudos_email(to_email, kudos_transfer, True)
 
             # 4. Send email unless the email address has notifications disabled
-            if not should_suppress_notification_email(to_email, 'kudos'):
+            if allowed_to_send_email(to_email, 'kudos'):
                 # TODO:  Should we be doing something with the response from SendGrid?
                 #        Maybe we should store it somewhere.
                 send_mail(from_email, to_email, subject, text, html)
@@ -601,21 +409,21 @@ def maybe_market_to_github(bounty, event_name, profile_pairs=None):
         bool: Whether or not the Github comment was posted successfully.
 
     """
-    if not bounty.is_notification_eligible(var_to_check=settings.GITHUB_CLIENT_ID):
-        return False
-
-    # Define posting specific variables.
-    comment_id = None
-    url = bounty.github_url
-    uri = parse(url).path
-    uri_array = uri.split('/')
-
-    # Prepare the comment message string.
-    msg = build_github_notification(bounty, event_name, profile_pairs)
-    if not msg:
-        return False
-
     try:
+        if not bounty.is_notification_eligible(var_to_check=settings.GITHUB_CLIENT_ID):
+            return False
+
+        # Define posting specific variables.
+        comment_id = None
+        url = bounty.github_url
+        uri = parse(url).path
+        uri_array = uri.split('/')
+
+        # Prepare the comment message string.
+        msg = build_github_notification(bounty, event_name, profile_pairs)
+        if not msg:
+            return False
+
         username = uri_array[1]
         repo = uri_array[2]
         issue_num = uri_array[4]
@@ -628,7 +436,7 @@ def maybe_market_to_github(bounty, event_name, profile_pairs=None):
         # Handle creating or updating comments if profiles are provided.
         if event_name in ['work_started', 'work_submitted'] and profile_pairs:
             if comment_id is not None:
-                patch_issue_comment(comment_id, username, repo, msg)
+                patch_issue_comment(issue_num, comment_id, username, repo, msg)
             else:
                 response = post_issue_comment(username, repo, issue_num, msg)
                 if response.id:
@@ -640,7 +448,7 @@ def maybe_market_to_github(bounty, event_name, profile_pairs=None):
         # Handle deleting comments if no profiles are provided.
         elif event_name in ['work_started'] and not profile_pairs:
             if comment_id:
-                delete_issue_comment(comment_id, username, repo)
+                delete_issue_comment(issue_num, comment_id, username, repo)
                 if event_name == 'work_started':
                     bounty.interested_comment = None
                 elif event_name == 'work_done':

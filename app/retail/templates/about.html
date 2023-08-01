@@ -99,7 +99,7 @@
   </head>
 
   <body>
-    <div class="">
+    <div>
       {% include 'shared/tag_manager_2.html' %}
       {% include 'shared/top_nav.html' with class='d-md-flex' %}
       <div class="header">
@@ -204,16 +204,16 @@
               <div class="d-flex flex-column flex-shrink-0 shadow-sm rounded p-4 m-3 line-height-3" style="width: 286px;">
                 <img class="rounded-circle mb-2" src="{% static 'v2/images/about/kernel-photos/' %}{{user.img}}" width="120" height="120" alt="{{user.name}}">
                 <div class="font-weight-bold font-bigger-1 text-truncate">{{user.name}}</div>
-                <div class="">{{user.position}}</div>
-                <div class="">{{user.company}}</div>
+                <div>{{user.position}}</div>
+                <div>{{user.company}}</div>
               </div>
               {% endfor %}
               {% for user in kernel %}
               <div class="d-flex flex-column flex-shrink-0 shadow-sm rounded p-4 m-3 line-height-3" style="width: 286px;">
                 <img class="rounded-circle mb-2" src="{% static 'v2/images/about/kernel-photos/' %}{{user.img}}" width="120" height="120" alt="{{user.name}}">
                 <div class="font-weight-bold font-bigger-1 text-truncate">{{user.name}}</div>
-                <div class="">{{user.position}}</div>
-                <div class="">{{user.company}}</div>
+                <div>{{user.position}}</div>
+                <div>{{user.company}}</div>
               </div>
               {% endfor %}
             </div>
@@ -226,7 +226,7 @@
                 <img class="rounded-circle mb-2" src="{% url 'org_avatar' user.profile__handle %}" width="120" height="120" alt="{{user.profile__handle}}">
 
                 <div class="font-weight-bold font-bigger-1 text-truncate">{% if user.profile__data.name %}{{user.profile__data.name}}{% else %}{{user.profile__handle}}{% endif %}</div>
-                <div class="">Top Contributor</div>
+                <div>Top Contributor</div>
                 {% if user.profile__organizations %}
                   <div class="text-truncate">{{user.profile__organizations|join:", "}}</div>
                 {% endif %}
@@ -237,7 +237,7 @@
                 <img class="rounded-circle mb-2" src="{% url 'org_avatar' user.profile__handle %}" width="120" height="120" alt="{{user.profile__handle}}">
 
                 <div class="font-weight-bold font-bigger-1 text-truncate">{% if user.profile__data.name %}{{user.profile__data.name}}{% else %}{{user.profile__handle}}{% endif %}</div>
-                <div class="">Top Contributor</div>
+                <div>Top Contributor</div>
                 {% if user.profile__organizations %}
                   <div class="text-truncate">{{user.profile__organizations|join:", "}}</div>
                 {% endif %}
@@ -251,36 +251,27 @@
         </section>
         <section id="newsletter" class="bg-lightpurple py-5 mt-5">
           <div class="container">
-
             <div class="row">
-              <div class="col-12">
-                <h2>Get the latest from Gitcoin</h2>
-                <div class="row">
-                  <div class="col-12 col-md-4">
-                    <p class="font-bigger-1 mt-3">Share your email to receive guides and industry news.</p>
-                  </div>
-                  <div id="mauticform_wrapper_generalnewsletter" class="mauticform_wrapper col-12 col-md-6 offset-md-1  d-flex justify-content-end">
-                    <form autocomplete="false" role="form" method="post" action="https://engage.gitcoin.co/form/submit?formId=8" id="mauticform_generalnewsletter" data-mautic-form="generalnewsletter" enctype="multipart/form-data" class="py-3 form-inline w-100">
-                      <div class="mauticform-innerform w-100">
-                        <div class="mauticform-page-wrapper mauticform-page-1 d-flex align-items-center position-relative justify-content-end" data-mautic-form-page="1">
-                          <div id="mauticform_generalnewsletter_email" data-validate="email" data-validation-type="email" class="mauticform-row mauticform-email mauticform-field-1 mauticform-required flex-fill pr-2">
-                            <input id="mauticform_input_generalnewsletter_email" name="mauticform[email]" value="" placeholder="Enter your email" class="mauticform-input form-control w-100 font-smaller-1" type="email">
-                            <span class="mauticform-errormsg mt-2" style="display: none;">Please fill the email input.</span>
-                          </div>
-                          <div id="mauticform_generalnewsletter_submit" class="mauticform-row mauticform-button-wrapper mauticform-field-2 align-self-baseline">
-                            <button type="submit" name="mauticform[submit]" id="mauticform_input_generalnewsletter_submit" value="" class="mauticform-button btn btn-primary font-smaller-3 py-2 px-4">Subscribe</button>
-                          </div>
-                        </div>
-                      </div>
-                      <div class="mauticform-error mt-2" id="mauticform_generalnewsletter_error"></div>
-                      <div class="mauticform-message mt-2" id="mauticform_generalnewsletter_message"></div>
-                      <input type="hidden" name="mauticform[formId]" id="mauticform_generalnewsletter_id" value="8">
-                      <input type="hidden" name="mauticform[return]" id="mauticform_generalnewsletter_return" value="">
-                      <input type="hidden" name="mauticform[formName]" id="mauticform_generalnewsletter_name" value="generalnewsletter">
-                    </form>
-                  </div>
+            <div class="col-12">
+              <h2>Get the latest from Gitcoin</h2>
+              <div class="row">
+                <div class="col-12 col-md-4">
+                  <p class="font-bigger-1 mt-3">Share your email to receive guides and industry news.</p>
                 </div>
+                <div class="col-12 col-md-6 offset-md-1  d-flex justify-content-end">
+                  <script charset="utf-8" type="text/javascript" src="//js.hsforms.net/forms/v2.js"></script>
+                  <div class="hubspot_form_wrap simple">
+                  <script>
+                    hbspt.forms.create({
+                      region: "na1",
+                      portalId: "21870089",
+                      formId: "24af31f5-d93f-4be3-a1ed-f0377ff86aec"
+                    });
+                  </script>
+                  </div>
+                  </div>
               </div>
+            </div>
             </div>
           </div>
 

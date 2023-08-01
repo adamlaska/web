@@ -75,7 +75,7 @@ class Token(SuperModel):
     Attributes:
         artist (str): The artist that created the kudos image.
         background_color (str): 6 digit hex code background color.  See Open Sea docs for details.
-        cloned_from_id (int): Orignal Kudos that this one was cloned from.
+        cloned_from_id (int): Original Kudos that this one was cloned from.
         contract (FK): Foreing key to the Contract model.
         description (str): Description of the kudos.
         external_url (str): External URL pointer to image asset.  See Open Sea docs for details.
@@ -103,7 +103,7 @@ class Token(SuperModel):
 
     # Kudos Struct (also in contract)
     price_finney = models.IntegerField()
-    num_clones_allowed = models.IntegerField(null=True, blank=True)
+    num_clones_allowed = models.IntegerField(null=True, blank=True, db_index=True)
     num_clones_in_wild = models.IntegerField(null=True, blank=True)
     num_clones_available_counting_indirect_send = models.IntegerField(blank=True, default=0)
 
@@ -133,7 +133,7 @@ class Token(SuperModel):
     contract = models.ForeignKey(
         'kudos.Contract', related_name='kudos_contract', on_delete=models.SET_NULL, null=True
     )
-    hidden = models.BooleanField(default=False, help_text=('Hide from marketplace?'))
+    hidden = models.BooleanField(default=False, help_text=('Hide from marketplace?'), db_index=True)
     hidden_token_details_page = models.BooleanField(default=False, help_text=('Hide token details page'))
     send_enabled_for_non_gitcoin_admins = models.BooleanField(default=True)
     preview_img_mode = models.CharField(max_length=255, default='png')
@@ -375,22 +375,22 @@ class Token(SuperModel):
         root = environ.Path(__file__) - 2  # Set the base directory to two levels.
         file_path = root('assets') + '/' + self.image
 
-        # download it if file is remote
-        if settings.AWS_STORAGE_BUCKET_NAME and settings.AWS_STORAGE_BUCKET_NAME in self.image:
-            file_path = f'cache/{self.pk}.png'
-            if not path.exists(file_path):
-                safe_url = self.image.replace(' ', '%20')
-                filedata = urllib.request.urlopen(safe_url)
-                datatowrite = filedata.read()
-                with open(file_path, 'wb') as f:
-                    f.write(datatowrite)
-
-        # serve file
         try:
+            # download it if file is remote
+            if settings.AWS_STORAGE_BUCKET_NAME and settings.AWS_STORAGE_BUCKET_NAME in self.image:
+                file_path = f'cache/{self.pk}.png'
+                if not path.exists(file_path):
+                    safe_url = self.image.replace(' ', '%20')
+                    filedata = urllib.request.urlopen(safe_url)
+                    datatowrite = filedata.read()
+                    with open(file_path, 'wb') as f:
+                        f.write(datatowrite)
+
+            # serve file
             with open(file_path, 'rb') as f:
                 obj = File(f)
                 from avatar.utils import svg_to_png
-                return svg_to_png(obj.read(), scale=3, width=333, height=384, index=self.pk, prefer='inkscape')
+                return svg_to_png(obj.read(), scale=3)
         except:
             return None
 
@@ -483,7 +483,8 @@ def postsave_token(sender, instance, created, **kwargs):
                 'metadata': {
                 }
             }
-            Activity.objects.create(**kwargs)
+            activity = Activity.objects.create(**kwargs)
+            activity.populate_activity_index()
 
 
 class KudosTransfer(SendCryptoAsset):

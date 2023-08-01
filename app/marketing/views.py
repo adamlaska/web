@@ -19,7 +19,6 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 from __future__ import unicode_literals
 
-import csv
 import json
 import logging
 
@@ -39,16 +38,16 @@ from django.utils.translation import gettext_lazy as _
 
 from app.utils import sync_profile
 from chartit import PivotChart, PivotDataPool
-from dashboard.models import HackathonEvent, Profile, TokenApproval
+from dashboard.models import Profile, TokenApproval
 from dashboard.utils import create_user_action, get_orgs_perms, is_valid_eth_address
-from dashboard.views import mautic_proxy_backend
+# from dashboard.views import mautic_proxy_backend
 from gas.utils import recommend_min_gas_price_to_confirm_in_time
 from git.utils import get_github_primary_email
 from grants.models import Grant
+from marketing.common.utils import delete_email_subscription, get_or_save_email_subscriber, validate_slack_integration
 from marketing.country_codes import COUNTRY_CODES, COUNTRY_NAMES, FLAG_API_LINK, FLAG_ERR_MSG, FLAG_SIZE, FLAG_STYLE
-from marketing.mails import new_feedback
 from marketing.models import AccountDeletionRequest, EmailSubscriber, Keyword, LeaderboardRank, UpcomingDate
-from marketing.utils import get_or_save_email_subscriber, validate_slack_integration
+from marketing.tasks import send_earnings_csv
 from retail.emails import render_new_bounty
 from retail.helpers import get_ip
 from townsquare.models import Announcement
@@ -66,9 +65,6 @@ def get_settings_navs(request):
     }, {
         'body': _('Matching'),
         'href': reverse('matching_settings')
-    }, {
-        'body': _('Feedback'),
-        'href': reverse('feedback_settings')
     }, {
         'body': 'Slack',
         'href': reverse('slack_settings'),
@@ -107,8 +103,11 @@ def settings_helper_get_auth(request, key=None):
     es = EmailSubscriber.objects.none()
 
     # check if user's email has changed
-    if request.user.is_authenticated:
+    if request.user.is_authenticated and request.user.profile:
         current_email = get_github_primary_email(request.user.profile.github_access_token)
+        if not current_email:
+            request.user.profile.github_access_token = ''
+            request.user.profile.save()
         if current_email != request.user.profile.email:
             request.user.profile.email = current_email
             request.user.profile.save()
@@ -253,49 +252,21 @@ def matching_settings(request):
     return TemplateResponse(request, 'settings/matching.html', context)
 
 
-def feedback_settings(request):
-    # setup
-    __, es, __, __ = settings_helper_get_auth(request)
-    if not es:
-        login_redirect = redirect('/login/github/?next=' + request.get_full_path())
-        return login_redirect
+# def set_mautic_dnc(profile, es, form):
+#     """Places contact on the DNC list on mautic
 
-    msg = ''
-    if request.POST and request.POST.get('submit'):
-        comments = request.POST.get('comments', '')[:255]
-        has_comment_changed = comments != es.metadata.get('comments', '')
-        if has_comment_changed:
-            new_feedback(es.email, comments)
-        es.metadata['comments'] = comments
-        es = record_form_submission(request, es, 'feedback')
-        es.save()
-        msg = _('We\'ve received your feedback.')
-
-    context = {
-        'nav': 'home',
-        'active': '/settings/feedback',
-        'title': _('Feedback'),
-        'navs': get_settings_navs(request),
-        'msg': msg,
-    }
-    return TemplateResponse(request, 'settings/feedback.html', context)
-
-
-def set_mautic_dnc(profile, es, form):
-    """Places contact on the DNC list on mautic
-
-        Args:
-            profile (Profile): The user who is being unsubscribed
-            es (EmailSubscriber): The details of the subscription
-            form (dict): email_type: bool
-    """
-    preferences = es.preferences.get('suppression_preferences', {})
-    # ensure contact is marked as DNC in mautic (this wont be in sync if the user unsubscribes by following the link in the email)
-    # todo: add a cronjob to keep this state in sync with mautic or place unsubscribe logic in django and include gitcoin.co links in emails
-    if bool(form.get('marketing', False)) == True and preferences.get('marketing', False) == False:
-        mautic_proxy_backend('POST', f'contacts/{profile.mautic_id}/dnc/email/add', b'{"reason":3}')
-    elif bool(form.get('marketing', True)) == False and preferences.get('marketing', True) == True:
-        mautic_proxy_backend('POST', f'contacts/{profile.mautic_id}/dnc/email/remove', b'{"reason":3}')
+#         Args:
+#             profile (Profile): The user who is being unsubscribed
+#             es (EmailSubscriber): The details of the subscription
+#             form (dict): email_type: bool
+#     """
+#     preferences = es.preferences.get('suppression_preferences', {})
+#     # ensure contact is marked as DNC in mautic (this wont be in sync if the user unsubscribes by following the link in the email)
+#     # todo: add a cronjob to keep this state in sync with mautic or place unsubscribe logic in django and include gitcoin.co links in emails
+#     if bool(form.get('marketing', False)) == True and preferences.get('marketing', False) == False:
+#         mautic_proxy_backend('POST', f'contacts/{profile.mautic_id}/dnc/email/add', b'{"reason":3}')
+#     elif bool(form.get('marketing', True)) == False and preferences.get('marketing', True) == True:
+#         mautic_proxy_backend('POST', f'contacts/{profile.mautic_id}/dnc/email/remove', b'{"reason":3}')
 
 
 
@@ -335,8 +306,8 @@ def email_settings(request, key):
             es.email = email
             unsubscribed_email_type = {}
             unsubscribed_email_type[email_type] = True
-            if email_type == 'marketing':
-                set_mautic_dnc(profile, es, unsubscribed_email_type)
+            # if email_type == 'marketing':
+            #     set_mautic_dnc(profile, es, unsubscribed_email_type)
             es.build_email_preferences(unsubscribed_email_type)
             es = record_form_submission(request, es, 'email')
             ip = get_ip(request)
@@ -382,7 +353,7 @@ def email_settings(request, key):
                     if key not in form.keys():
                         form[key] = False
 
-                set_mautic_dnc(profile, es, form)
+                # set_mautic_dnc(profile, es, form)
                 es.build_email_preferences(form)
                 es = record_form_submission(request, es, 'email')
                 ip = get_ip(request)
@@ -505,30 +476,6 @@ def token_settings(request):
     }
     return TemplateResponse(request, 'settings/tokens.html', context)
 
-
-def export_earnings_csv(earnings, export_type):
-    response = HttpResponse(content_type='text/csv')
-    name = f"gitcoin_{export_type}_{timezone.now().strftime('%Y_%m_%dT%H_00_00')}"
-    response['Content-Disposition'] = f'attachment; filename="{name}.csv"'
-    writer = csv.writer(response)
-    writer.writerow(['id', 'date', 'From', 'From Location', 'To', 'To Location', 'Type', 'Value In USD', 'txid', 'token_name', 'token_value', 'url'])
-    for earning in earnings:
-        writer.writerow([earning.pk,
-            earning.created_on.strftime("%Y-%m-%dT%H:00:00"),
-            earning.from_profile.handle if earning.from_profile else '*',
-            earning.from_profile.data.get('location', 'Unknown') if earning.from_profile else 'Unknown',
-            earning.to_profile.handle if earning.to_profile else '*',
-            earning.to_profile.data.get('location', 'Unknown') if earning.to_profile else 'Unknown',
-            earning.source_type_human,
-            earning.value_usd,
-            earning.txid,
-            earning.token_name,
-            earning.token_value,
-            earning.url,
-            ])
-
-    return response
-
 def account_settings(request):
     """Display and save user's Account settings.
 
@@ -556,13 +503,13 @@ def account_settings(request):
             profile.preferred_payout_address = eth_address
             profile.save()
             msg = _('Updated your Address')
+
         elif request.POST.get('export', False):
             export_type = request.POST.get('export_type', False)
+            user_pk = request.user.pk
+            send_earnings_csv.delay(user_pk, export_type)
+            return HttpResponse(status="200")
 
-            profile = request.user.profile
-            earnings = profile.earnings if export_type == 'earnings' else profile.sent_earnings
-            earnings = earnings.filter(network='mainnet').order_by('-created_on')
-            return export_earnings_csv(earnings, export_type)
         elif request.POST.get('disconnect', False):
             profile.github_access_token = ''
             profile = record_form_submission(request, profile, 'account-disconnect')
@@ -574,7 +521,12 @@ def account_settings(request):
             logout_redirect = redirect(redirect_url)
             logout_redirect['Cache-Control'] = 'max-age=0 no-cache no-store must-revalidate'
             return logout_redirect
+
         elif request.POST.get('delete', False):
+
+            email = profile.email
+            if email:
+                delete_email_subscription(email)
 
             # remove profile
             profile.hide_profile = True
@@ -583,7 +535,7 @@ def account_settings(request):
             profile.save()
 
             # remove email
-            mautic_proxy_backend('POST', f'contacts/{profile.mautic_id}/delete')
+            # mautic_proxy_backend('POST', f'contacts/{profile.mautic_id}/delete')
 
             if es:
                 es.delete()
@@ -605,6 +557,7 @@ def account_settings(request):
             messages.success(request, _('Your account has been deleted.'))
             logout_redirect = redirect(reverse('logout') + '?next=/')
             return logout_redirect
+
         else:
             msg = _('Error: did not understand your request')
 
@@ -662,7 +615,7 @@ def job_settings(request):
             profile.save()
 
             # remove email
-            mautic_proxy_backend('POST', f'contacts/{profile.mautic_id}/delete')
+            # mautic_proxy_backend('POST', f'contacts/{profile.mautic_id}/delete')
 
             if es:
                 es.delete()
@@ -1024,15 +977,6 @@ def get_hackathons():
 
         return current_hackathons, upcoming_hackathons
 
-def latest_activities(user):
-    from retail.views import get_specific_activities
-    from townsquare.tasks import increment_view_counts
-    cutoff_date = timezone.now() - timezone.timedelta(days=1)
-    activities = get_specific_activities('connect', 0, user, 0)[:4]
-    activities_pks = list(activities.values_list('pk', flat=True))
-    increment_view_counts.delay(activities_pks)
-    return activities
-
 
 @staff_member_required
 def new_bounty_daily_preview(request):
@@ -1045,5 +989,5 @@ def new_bounty_daily_preview(request):
     max_bounties = 5
     if len(new_bounties) > max_bounties:
         new_bounties = new_bounties[0:max_bounties]
-    response_html, _ = render_new_bounty(settings.CONTACT_EMAIL, new_bounties, old_bounties='', offset=3, quest_of_the_day=quest_of_the_day(), upcoming_grant=upcoming_grant(), hackathons=get_hackathons(), latest_activities=latest_activities(request.user))
+    response_html, _ = render_new_bounty(settings.CONTACT_EMAIL, new_bounties, old_bounties='', offset=3, quest_of_the_day=quest_of_the_day(), upcoming_grant=upcoming_grant(), hackathons=get_hackathons())
     return HttpResponse(response_html)

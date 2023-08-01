@@ -30,7 +30,7 @@ const initPolkadotConnection = async(grant, vm) => {
     });
   }).catch(err => {
     console.log(err);
-    _alert('Error connecting to polkadot network', 'danger');
+    _alert('Error connecting to Polkadot network', 'danger');
   });
 
   // step 3: allow user to select address on successful connection
@@ -38,7 +38,7 @@ const initPolkadotConnection = async(grant, vm) => {
 
     if (error) {
       vm.updatePaymentStatus(grant.grant_id, 'failed');
-      _alert('Please ensure you\'ve connected your polkadot extension to Gitcoin', 'danger');
+      _alert('Please ensure you\'ve connected your Polkadot extension to Gitcoin', 'danger');
       console.log(error);
       return;
     }
@@ -124,7 +124,6 @@ const contributeWithPolkadotExtension = async(grant, vm, from_address) => {
           'tx_id': txn,
           'token_symbol': grant.grant_donation_currency,
           'tenant': tenant,
-          'comment': grant.grant_comments,
           'amount_per_period': grant.grant_donation_amount
         }]
       };
@@ -153,12 +152,12 @@ const contributeWithPolkadotExtension = async(grant, vm, from_address) => {
 
         } else {
           vm.updatePaymentStatus(grant.grant_id, 'failed');
-          _alert('Unable to make contribute to grant. Please try again later', 'danger');
+          _alert('Unable to contribute to grant. Please try again later', 'danger');
           console.error(`error: grant contribution failed with status: ${response.status} and message: ${response.message}`);
         }
       }).catch(function(error) {
         vm.updatePaymentStatus(grant.grant_id, 'failed');
-        _alert('Unable to make contribute to grant. Please try again later', 'danger');
+        _alert('Unable to contribute to grant. Please try again later', 'danger');
         console.log(error);
       });
     }

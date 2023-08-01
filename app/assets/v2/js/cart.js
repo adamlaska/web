@@ -9,23 +9,42 @@ const { Zero: ZERO } = ethers.constants;
 const { BigNumber } = ethers;
 let appCart;
 
-document.addEventListener('dataWalletReady', function(e) {
+document.addEventListener('dataWalletReady', async function(e) {
   appCart.$refs['cart'].network = networkName;
+  if (web3.eth.currentProvider.isPortis) {
+    appCart.$refs['cart'].networkId = web3.eth.currentProvider._portis._config.network.chainId;
+  } else {
+    appCart.$refs['cart'].networkId = String(Number(web3.eth.currentProvider.chainId));
+  }
 }, false);
 
 // needWalletConnection();
 
 // Constants
+const MATIC_ADDRESS = '0x0000000000000000000000000000000000001010';
 const ETH_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
 const gitcoinAddress = '0xde21F729137C5Af1b01d73aF1dC21eFfa2B8a0d6'; // Gitcoin donation address for mainnet and rinkeby
+const gitcoinAddressPolygon = '0x366adF5B96Ee15AfF5d66B0Fa44a56330b55E97B'; // Gitcoin donation address for polygon mainnet and mumbai
+const POLYGON_TESTNET_NETWORK_ID = '80001';
+const POLYGON_MAINNET_NETWORK_ID = '137';
 
 // Contract parameters and constants
 const bulkCheckoutAbi = [{ 'anonymous': false, 'inputs': [{ 'indexed': true, 'internalType': 'address', 'name': 'token', 'type': 'address' }, { 'indexed': true, 'internalType': 'uint256', 'name': 'amount', 'type': 'uint256' }, { 'indexed': false, 'internalType': 'address', 'name': 'dest', 'type': 'address' }, { 'indexed': true, 'internalType': 'address', 'name': 'donor', 'type': 'address' }], 'name': 'DonationSent', 'type': 'event' }, { 'anonymous': false, 'inputs': [{ 'indexed': true, 'internalType': 'address', 'name': 'previousOwner', 'type': 'address' }, { 'indexed': true, 'internalType': 'address', 'name': 'newOwner', 'type': 'address' }], 'name': 'OwnershipTransferred', 'type': 'event' }, { 'anonymous': false, 'inputs': [{ 'indexed': false, 'internalType': 'address', 'name': 'account', 'type': 'address' }], 'name': 'Paused', 'type': 'event' }, { 'anonymous': false, 'inputs': [{ 'indexed': true, 'internalType': 'address', 'name': 'token', 'type': 'address' }, { 'indexed': true, 'internalType': 'uint256', 'name': 'amount', 'type': 'uint256' }, { 'indexed': true, 'internalType': 'address', 'name': 'dest', 'type': 'address' }], 'name': 'TokenWithdrawn', 'type': 'event' }, { 'anonymous': false, 'inputs': [{ 'indexed': false, 'internalType': 'address', 'name': 'account', 'type': 'address' }], 'name': 'Unpaused', 'type': 'event' }, { 'inputs': [{ 'components': [{ 'internalType': 'address', 'name': 'token', 'type': 'address' }, { 'internalType': 'uint256', 'name': 'amount', 'type': 'uint256' }, { 'internalType': 'address payable', 'name': 'dest', 'type': 'address' }], 'internalType': 'struct BulkCheckout.Donation[]', 'name': '_donations', 'type': 'tuple[]' }], 'name': 'donate', 'outputs': [], 'stateMutability': 'payable', 'type': 'function' }, { 'inputs': [], 'name': 'owner', 'outputs': [{ 'internalType': 'address', 'name': '', 'type': 'address' }], 'stateMutability': 'view', 'type': 'function' }, { 'inputs': [], 'name': 'pause', 'outputs': [], 'stateMutability': 'nonpayable', 'type': 'function' }, { 'inputs': [], 'name': 'paused', 'outputs': [{ 'internalType': 'bool', 'name': '', 'type': 'bool' }], 'stateMutability': 'view', 'type': 'function' }, { 'inputs': [], 'name': 'renounceOwnership', 'outputs': [], 'stateMutability': 'nonpayable', 'type': 'function' }, { 'inputs': [{ 'internalType': 'address', 'name': 'newOwner', 'type': 'address' }], 'name': 'transferOwnership', 'outputs': [], 'stateMutability': 'nonpayable', 'type': 'function' }, { 'inputs': [], 'name': 'unpause', 'outputs': [], 'stateMutability': 'nonpayable', 'type': 'function' }, { 'inputs': [{ 'internalType': 'address payable', 'name': '_dest', 'type': 'address' }], 'name': 'withdrawEther', 'outputs': [], 'stateMutability': 'nonpayable', 'type': 'function' }, { 'inputs': [{ 'internalType': 'address', 'name': '_tokenAddress', 'type': 'address' }, { 'internalType': 'address', 'name': '_dest', 'type': 'address' }], 'name': 'withdrawToken', 'outputs': [], 'stateMutability': 'nonpayable', 'type': 'function' }];
 const bulkCheckoutAddress = '0x7d655c57f71464B6f83811C55D84009Cd9f5221C';
+const gnosisSafeAbi = [{'constant': true, 'inputs': [], 'name': 'VERSION', 'outputs': [{'internalType': 'string', 'name': '', 'type': 'string'}], 'payable': false, 'stateMutability': 'view', 'type': 'function'}];
 
 // Grant data
-let grantHeaders = [ 'Grant', 'Amount', 'Total CLR Match Amount' ]; // cart column headers
 let grantData = []; // data for grants in cart, initialized in mounted hook
+
+Vue.component('eth-checkout-button', {
+  delimiters: [ '[[', ']]' ],
+  template: '#eth-checkout-template',
+  props: [
+    'maxCartItems', 'network', 'isZkSyncDown', 'isPolygonDown', 'onPolygonUpdate', 'onZkSyncUpdate', 'donationInputs', 'donationInputsPolygon',
+    'currentTokens', 'grantsByTenant', 'grantsUnderMinimalContribution', 'activeCheckout', 'standardCheckout', 'multisigGrants',
+    'tabSelected'
+  ]
+});
 
 Vue.component('grants-cart', {
   delimiters: [ '[[', ']]' ],
@@ -33,6 +52,9 @@ Vue.component('grants-cart', {
   data: function() {
     return {
       // Checkout, shared
+      grantAnalyticsItems: [],
+      cartTotal: 0,
+      analyticsHash: null,
       selectedZcashPayment: 'taddress',
       optionsZcashPayment: [
         { text: 'Wallet t-address', value: 'taddress' },
@@ -43,7 +65,15 @@ Vue.component('grants-cart', {
         { text: 'Wallet address', value: 'address' },
         { text: 'Transaction Hash', value: 'txid' }
       ],
+      selectedETHCartToken: 'DAI',
+      preferredAmount: 25,
+      tokenListOptions: {
+        strict: false,
+        chainId: '',
+        network: ''
+      },
       chainId: '',
+      networkId: '',
       network: 'mainnet',
       tabSelected: 'ETH',
       tabIndex: null,
@@ -52,22 +82,25 @@ Vue.component('grants-cart', {
       tokenList: undefined, // array of all tokens for selected network
       isLoading: undefined,
       gitcoinFactorRaw: 5, // By default, 5% of donation amount goes to Gitcoin
-      grantHeaders,
       grantData,
-      comments: undefined,
       hideWalletAddress: true,
       AnonymizeGrantsContribution: false,
       include_for_clr: false,
       windowWidth: window.innerWidth,
       userAddress: undefined,
-      isCheckoutOngoing: false, // true once user clicks "Standard checkout" button
+      activeCheckout: undefined, // standard / polygon / zksync
       maxCartItems: 50, // Max supported items in cart at once
       UsdMinimalContribution: 1,
+      multisigGrants: [], // array of multisig grants in cart
       // Checkout, zkSync
-      zkSyncUnsupportedTokens: [], // Used to inform user which tokens in their cart are not on zkSync
+      zkSyncSupportedTokens: [], // Used to inform user which tokens in their cart are on zkSync
       zkSyncEstimatedGasCost: undefined, // Used to tell user which checkout method is cheaper
-      isZkSyncDown: false, // disable zkSync when true
+      polygonSupportedTokens: [], // Used to inform user which tokens in their cart are on Polygon
+      polygonEstimatedGasCost: undefined, // Used to tell user which checkout method is cheaper
+      isZkSyncDown: document.disableZksync, // disable zkSync when true
+      isPolygonDown: document.disablePolygon, // disable polygon when true
       isPolkadotExtInstalled: false,
+      showConfirmationModal: false, // Used to display interim transaction confirmation modal
       chainScripts: {
         'POLKADOT': [
           `${static_url}v2/js/lib/polkadot/core.min.js`,
@@ -80,12 +113,6 @@ Vue.component('grants-cart', {
           `${static_url}v2/js/grants/cart/binance_extension.js`
         ],
         'HARMONY': [
-          `${static_url}v2/js/lib/harmony/HarmonyUtils.browser.js`,
-          `${static_url}v2/js/lib/harmony/HarmonyJs.browser.js`,
-          `${static_url}v2/js/lib/harmony/HarmonyAccount.browser.js`,
-          `${static_url}v2/js/lib/harmony/HarmonyCrypto.browser.js`,
-          `${static_url}v2/js/lib/harmony/HarmonyNetwork.browser.js`,
-          `${static_url}v2/js/lib/harmony/utils.js`,
           `${static_url}v2/js/grants/cart/harmony_extension.js`
         ],
         'RSK': [
@@ -94,6 +121,10 @@ Vue.component('grants-cart', {
         'ALGORAND': [
           `${static_url}v2/js/tokens.js`,
           `${static_url}v2/js/grants/cart/algorand_extension.js`
+        ],
+        'COSMOS': [
+          `${static_url}v2/js/lib/cosmos/cosmwasmjs.js`,
+          `${static_url}v2/js/grants/cart/cosmos_extension.js`
         ]
       }
     };
@@ -150,26 +181,76 @@ Vue.component('grants-cart', {
     },
     filterByNetwork: function() {
       const vm = this;
+      let result;
+      let network;
+
+      network = vm.tokenListOptions.network || vm.network;
 
       if (vm.network == '') {
-        return vm.sortByPriority;
+        result = vm.sortByPriority;
+      } else if (vm.tokenListOptions.strict) {
+        result = vm.sortByPriority.filter((item) => {
+          return item.network === network;
+        });
+      } else {
+        result = vm.sortByPriority.filter((item) => {
+          return item.network.toLowerCase().indexOf(network.toLowerCase()) >= 0;
+        });
       }
-      return vm.sortByPriority.filter((item)=>{
-        return item.network.toLowerCase().indexOf(vm.network.toLowerCase()) >= 0;
-      });
+
+      return result;
     },
     filterByChainId: function() {
       const vm = this;
       let result;
+      let chainId;
 
-      if (vm.chainId == '') {
+      chainId = vm.tokenListOptions.chainId || vm.chainId;
+
+      if (chainId == '') {
         result = vm.filterByNetwork;
+      } else if (vm.tokenListOptions.strict) {
+        result = vm.sortByPriority.filter((item) => {
+          return item.chainId == chainId;
+        });
+        return result;
       } else {
         result = vm.filterByNetwork.filter((item) => {
-          return String(item.chainId) === vm.chainId;
+          return String(item.chainId) === chainId;
+        });
+      }
+
+      return result;
+    },
+    filterByNetworkId: function() {
+      const vm = this;
+      let result;
+      let networkId;
+
+      networkId = vm.tokenListOptions.networkId || vm.networkId;
+
+      if (vm.networkId == '') {
+        result = vm.filterByChainId;
+      } else if (vm.tokenListOptions.strict) {
+        result = vm.sortByPriority.filter((item) => {
+          return String(item.networkId) == networkId;
+        });
+        return result;
+      } else {
+        result = vm.filterByChainId.filter((item) => {
+          return String(item.networkId) === networkId;
         });
       }
       return result;
+    },
+    fetchTokens() {
+      // removes duplicates from the tokens array of objects
+      let vm = this;
+      let uniq = {};
+
+      return vm.filterByChainId.filter(
+        obj => !uniq[obj['name']] && (uniq[obj['name']] = true)
+      );
     },
     // Returns true if user is logged in with GitHub, false otherwise
     isLoggedIn() {
@@ -183,7 +264,7 @@ Vue.component('grants-cart', {
 
     // Amounts being donated to grants
     donationsToGrants() {
-      return this.donationSummaryTotals(1 - this.gitcoinFactor);
+      return this.donationSummaryTotals(1);
     },
 
     // Amounts being donated to Gitcoin
@@ -193,7 +274,7 @@ Vue.component('grants-cart', {
 
     // Total amounts being donated
     donationsTotal() {
-      return this.donationSummaryTotals(1);
+      return this.donationSummaryTotals(1 + this.gitcoinFactor);
     },
 
     // String describing user's donations to grants
@@ -211,84 +292,77 @@ Vue.component('grants-cart', {
       return this.donationSummaryString('donationsTotal', 2);
     },
 
-    // Array of objects containing all donations and associated data
-    donationInputs() {
-      if (!this.grantsByTenant || this.tabSelected !== 'ETH') {
-        return undefined;
-      }
+    predictionTotal() {
+      let totalEstimatedMatch = 0;
+      let donationToken;
 
-      // Generate array of objects containing donation info from cart
-      let gitcoinFactor = String(100 - (100 * this.gitcoinFactor));
-      const donations = this.grantsByTenant.map((grant, index) => {
-        const tokenDetails = this.getTokenByName(grant.grant_donation_currency);
-        const amount = parseUnits(String(grant.grant_donation_amount || 0), tokenDetails.decimals)
-          .mul(gitcoinFactor)
-          .div(100);
+      this.grantData.map(grant => {
+        const match = Number(grant['grant_donation_clr_match']);
 
-        return {
-          token: tokenDetails.addr,
-          amount: amount.toString(),
-          dest: grant.grant_admin_address,
-          name: grant.grant_donation_currency, // token abbreviation, e.g. DAI
-          grant, // all grant data from localStorage
-          comment: this.comments[index], // comment left by donor to grant owner
-          tokenApprovalTxHash: '' // tx hash of token approval required for this donation
-        };
-      });
-
-      // Append the Gitcoin donations (these already account for gitcoinFactor)
-      Object.keys(this.donationsToGitcoin).forEach((token) => {
-        const tokenDetails = this.getTokenByName(token);
-        const amount = parseUnits(String(this.donationsToGitcoin[token]), tokenDetails.decimals);
-
-        const gitcoinGrantInfo = {
-          // Manually fill this in so we can access it for the POST requests.
-          // We use empty strings for fields that are not needed here
-          grant_admin_address: gitcoinAddress,
-          grant_contract_address: '0xeb00a9c1Aa8C8f4b20C5d3dDA2bbC64Aa39AF752',
-          grant_contract_version: '1',
-          grant_donation_amount: this.donationsToGitcoin[token],
-          grant_donation_clr_match: '',
-          grant_donation_currency: token,
-          grant_donation_num_rounds: 1,
-          grant_id: '12',
-          grant_image_css: '',
-          grant_logo: '',
-          grant_slug: 'gitcoin-grants-official-matching-pool-fund',
-          grant_title: 'Gitcoin Grants Official Matching Pool Fund',
-          grant_token_address: '0x0000000000000000000000000000000000000000',
-          grant_token_symbol: '',
-          isAutomatic: true // we add this field to help properly format the POST requests,
-        };
-
-        // Only add to donation inputs array if donation amount is greater than 0
-        if (amount.gt(ZERO)) {
-          donations.push({
-            amount: amount.toString(),
-            token: tokenDetails.addr,
-            dest: gitcoinAddress,
-            name: token, // token abbreviation, e.g. DAI
-            grant: gitcoinGrantInfo, // equivalent to grant data from localStorage
-            comment: '', // comment left by donor to grant owner
-            tokenApprovalTxHash: '' // tx hash of token approval required for this donation
-          });
+        if (!isNaN(match)) {
+          totalEstimatedMatch += match;
         }
-
+        donationToken = grant['grant_donation_currency'];
       });
-      return donations;
+
+      return {
+        'token': donationToken,
+        'total': totalEstimatedMatch.toFixed(2),
+        'total_str': totalEstimatedMatch.toFixed(2).toString() + ' DAI'
+      };
     },
 
-    // Total amount of ETH that needs to be sent along with the transaction
-    donationInputsEthAmount() {
-      // Get the total ETH we need to send
+    predictionTotalString() {
+      return this.predictionTotal['total_str'];
+    },
+
+    totalString() {
+      const token = Object.keys(this['donationsTotal'])[0];
+      let total = Number(this['donationsTotal'][token]);
+      const match = Number(this.predictionTotal['total']);
+
+      if (match && token === 'DAI') {
+        total += match;
+
+        return total.toFixed(2).toString() + ' ' + token;
+      } else if (match) {
+
+        const match_str = this.predictionTotal['total_str'];
+        const donation_total_str = total.toFixed(2).toString() + ' ' + token;
+
+        return donation_total_str + ' + ' + match_str;
+      }
+
+      return total.toFixed(2).toString() + ' ' + token;
+    },
+
+    // Array of objects containing all donations and associated data
+    donationInputs() {
+      return this.computeDonationInputs(gitcoinAddress);
+    },
+
+    donationInputsPolygon() {
+      return this.computeDonationInputs(gitcoinAddressPolygon);
+    },
+
+    // Total amount of native currency that needs to be sent along with the transaction
+    donationInputsNativeAmount() {
+      // Get the total native currency we need to send
       const initialValue = new BN('0');
-      const ethAmountBN = this.donationInputs.reduce((accumulator, currentValue) => {
-        return currentValue.token === ETH_ADDRESS
-          ? accumulator.add(new BN(currentValue.amount)) // ETH donation
+      let nativeCurrencyAddress = this.nativeCurrency === 'MATIC' ? MATIC_ADDRESS : ETH_ADDRESS;
+      const nativeCurrencyAmountBN = this.donationInputs.reduce((accumulator, currentValue) => {
+        return currentValue.token === nativeCurrencyAddress
+          ? accumulator.add(new BN(currentValue.amount)) // native currency donation
           : accumulator.add(new BN('0')); // token donation
       }, initialValue);
 
-      return ethAmountBN.toString(10);
+      return nativeCurrencyAmountBN.toString(10);
+    },
+
+    nativeCurrency() {
+      let isPolygon = this.networkId === POLYGON_TESTNET_NETWORK_ID || this.networkId === POLYGON_MAINNET_NETWORK_ID;
+
+      return isPolygon ? 'MATIC' : 'ETH';
     },
 
     // Estimated gas limit for the transaction
@@ -303,7 +377,7 @@ Vue.component('grants-cart', {
       // If we have a cart where all donations are in Dai, we use a linear regression to
       // estimate gas costs based on real checkout transaction data, and add a 50% margin
       const donationCurrencies = this.donationInputs.map(donation => donation.token);
-      const daiAddress = this.getTokenByName('DAI').addr;
+      const daiAddress = this.getTokenByName('DAI')?.addr;
       const isAllDai = donationCurrencies.every((addr) => addr === daiAddress);
 
       if (isAllDai) {
@@ -322,7 +396,7 @@ Vue.component('grants-cart', {
       // donation (i.e. one item in the cart). Because gas prices go down with batched
       // transactions, whereas this assumes they're constant, this gives us a conservative estimate
       const gasLimit = this.donationInputs.reduce((accumulator, currentValue) => {
-        const tokenAddr = currentValue.token.toLowerCase();
+        const tokenAddr = currentValue.token?.toLowerCase();
 
         if (currentValue.token === ETH_ADDRESS) {
           return accumulator + 70000; // ETH donation gas estimate
@@ -347,27 +421,8 @@ Vue.component('grants-cart', {
       return gasLimit;
     },
 
-    // Make a recommendation to the user about which checkout to use
-    checkoutRecommendation() {
-      const estimateL1 = Number(this.donationInputsGasLimitL1); // L1 gas cost estimate
-      const estimateZkSync = Number(this.zkSyncEstimatedGasCost); // zkSync gas cost estimate
-
-      if (estimateL1 < estimateZkSync) {
-        const savingsInGas = estimateZkSync - estimateL1;
-        const savingsInPercent = Math.round(savingsInGas / estimateZkSync * 100);
-
-        return { name: 'Standard checkout', savingsInGas, savingsInPercent };
-      }
-
-      const savingsInGas = estimateL1 - estimateZkSync;
-      const percentSavings = savingsInGas / estimateL1 * 100;
-      const savingsInPercent = percentSavings > 99 ? 99 : Math.round(percentSavings); // max value of 99%
-
-      return { name: 'zkSync', savingsInGas, savingsInPercent };
-    },
-
     isHarmonyExtInstalled() {
-      return window.onewallet && window.onewallet.isOneWallet;
+      return window.ethereum && window.ethereum.isMetaMask;
     },
 
     isBinanceExtInstalled() {
@@ -375,7 +430,11 @@ Vue.component('grants-cart', {
     },
 
     isAlgorandExtInstalled() {
-      return window.AlgoSigner || false;
+      return window.WalletConnect || window.MyAlgoConnect || window.AlgoSigner || false;
+    },
+
+    isCosmosExtInstalled() {
+      return window.keplr || false;
     },
 
     isRskExtInstalled() {
@@ -397,6 +456,122 @@ Vue.component('grants-cart', {
   },
 
   methods: {
+    formatAnalyticsItems(grants) {
+      return grants.map((grant) => ({
+        item_id: grant.grant_id,
+        item_name: grant.grant_title,
+        item_category: grant.clr_round_num,
+        item_brand: grant.grant_admin_address
+      }));
+    },
+    setCartTotal(grants) {
+      let cartTotal = 0;
+
+      grants.forEach((grant) => {
+        cartTotal += grant.grant_donation_amount;
+      });
+      this.cartTotal = cartTotal;
+    },
+    // Array of objects containing all donations and associated data
+    computeDonationInputs(destGitcoinAddress) {
+      let isPolygon = destGitcoinAddress == gitcoinAddressPolygon;
+
+      if (!this.grantsByTenant || (this.tabSelected !== 'ETH' && this.tabSelected !== 'ETH_POLYGON')) {
+        return undefined;
+      }
+
+      // Generate array of objects containing donation info from cart
+      const donations = this.grantsByTenant.map((grant) => {
+        const tokenDetails = this.getTokenByName(grant.grant_donation_currency, isPolygon);
+        let amount;
+
+        try {
+          amount = parseUnits(String(Number(grant.grant_donation_amount) || 0), tokenDetails?.decimals);
+        } catch {
+          amount = parseUnits(String(0), tokenDetails?.decimals);
+        }
+
+        return {
+          token: tokenDetails?.addr,
+          amount: amount.toString(),
+          dest: grant.grant_admin_address,
+          name: grant.grant_donation_currency, // token abbreviation, e.g. DAI
+          grant, // all grant data from localStorage
+          tokenApprovalTxHash: '' // tx hash of token approval required for this donation
+        };
+      });
+
+      // Append the Gitcoin donations (these already account for gitcoinFactor)
+      Object.keys(this.donationsToGitcoin).forEach((token) => {
+        const tokenDetails = this.getTokenByName(token, isPolygon);
+        const amount = parseUnits(String(this.donationsToGitcoin[token]), tokenDetails?.decimals);
+
+        const gitcoinGrantInfo = {
+          // Manually fill this in so we can access it for the POST requests.
+          // We use empty strings for fields that are not needed here
+          grant_admin_address: destGitcoinAddress,
+          grant_contract_address: '0xeb00a9c1Aa8C8f4b20C5d3dDA2bbC64Aa39AF752',
+          grant_contract_version: '1',
+          grant_donation_amount: this.donationsToGitcoin[token],
+          grant_donation_clr_match: '',
+          grant_donation_currency: token,
+          grant_donation_num_rounds: 1,
+          grant_id: '12',
+          grant_image_css: '',
+          grant_logo: '',
+          grant_slug: 'gitcoin-grants-official-matching-pool-fund',
+          grant_title: 'Gitcoin Grants Official Matching Pool Fund',
+          grant_token_address: '0x0000000000000000000000000000000000000000',
+          grant_token_symbol: '',
+          isAutomatic: true // we add this field to help properly format the POST requests,
+        };
+
+        // Only add to donation inputs array if donation amount is greater than 0
+        if (amount.gt(ZERO)) {
+          donations.push({
+            amount: amount.toString(),
+            token: tokenDetails?.addr,
+            dest: destGitcoinAddress,
+            name: token, // token abbreviation, e.g. DAI
+            grant: gitcoinGrantInfo, // equivalent to grant data from localStorage
+            tokenApprovalTxHash: '' // tx hash of token approval required for this donation
+          });
+        }
+
+      });
+      return donations;
+    },
+
+    checkForGnosisSafes: async function() {
+      // collate grants which represent contracts which cannot be interacted with
+      const withCode = [];
+      const unsafeGrants = [];
+
+      // make these checks on mainnet
+      const mainnetProvider = new Web3('https://mainnet.infura.io/v3/1e0a90928efe4bb78bb1eeceb8aacc27');
+
+      // check each of the grants for an address starting with 0x
+      const grants = this.grantsByTenant.filter(grant => !!grant.grant_admin_address && grant.grant_admin_address.length === 42 && grant.grant_admin_address.startsWith('0x'));
+
+      // TODO: optimize the following code with multicall
+
+      // check each of the grants in the cart to see if it points to a contract
+      await Promise.all(grants.map((grant) => new Promise((resolve) => {
+        // check for contract on Polygon
+        mainnetProvider.eth.getCode(grant.grant_admin_address).then((code) => {
+          // if the address points to a contract, we want to stop any contributions from being sent here
+          if (code !== '0x') {
+            // (this could be a gnosis safe created via a relayer and until we can check for that, we want to block all contribs from hitting this address on polygon)
+            unsafeGrants.push(grant);
+          }
+          // resolve the discovered code
+          resolve(code);
+        });
+      })));
+
+      // return multisig grants
+      this.multisigGrants = unsafeGrants;
+    },
     setChainScripts: function() {
       let vm = this;
 
@@ -408,6 +583,23 @@ Vue.component('grants-cart', {
           vm.loadDynamicScripts(cb, vm.chainScripts[tenant], `${tenant}-script`);
         }
       });
+    },
+    /* Set supported tokens for L2s */
+    loadSupportedTokens() {
+      // zkSync
+      // Mainnet list: https://api.zksync.io/api/v0.1/tokens
+      // Rinkeby list: https://rinkeby-api.zksync.io/api/v0.1/tokens
+      this.zkSyncSupportedTokens = this.network === 'rinkeby'
+        ? [ 'ETH', 'USDT', 'USDC', 'LINK', 'TUSD', 'HT', 'OMG', 'TRB', 'ZRX', 'BAT', 'REP', 'STORJ', 'NEXO', 'MCO', 'KNC', 'LAMB', 'GNT', 'MLTT', 'XEM', 'DAI', 'PHNX' ]
+        : [ 'ETH', 'DAI', 'USDC', 'TUSD', 'USDT', 'SUSD', 'BUSD', 'LEND', 'BAT', 'KNC', 'LINK', 'MANA', 'MKR', 'REP', 'SNX', 'WBTC', 'ZRX', 'MLTT', 'LRC', 'HEX', 'PAN', 'SNT', 'YFI', 'UNI', 'STORJ', 'TBTC', 'EURS', 'GUSD', 'RENBTC', 'RNDR', 'DARK', 'CEL', 'AUSDC', 'CVP', 'BZRX', 'REN', 'RAI' ];
+
+      // Polygon
+      // We hardcode the list from Gitcoin's historical data based on the top ten tokens
+      // on ethereum chain and also Polygon network used by users to checkout.
+      // Confirm the token exists on Polygon's list of supported tokens: https://mapper.matic.today/
+      this.polygonSupportedTokens = this.network === 'mainnet'
+        ? [ 'DAI', 'ETH', 'USDT', 'USDC', 'PAN', 'BNB', 'UNI', 'CELO', 'MASK', 'MATIC' ]
+        : [ 'DAI', 'ETH', 'USDT', 'USDC', 'UNI', 'MATIC' ];
     },
     async isPolkadotLoaded() {
       let vm = this;
@@ -424,17 +616,34 @@ Vue.component('grants-cart', {
         return vm.isPolkadotExtInstalled;
       });
     },
+    sendPaymentInfoEvent(payment_type) {
+      if (this.grantData.length) {
+        const currency = this.grantData[0].grant_donation_currency;
+
+        gtag('event', 'add_payment_info', {
+          currency,
+          value: this.cartTotal,
+          payment_type,
+          items: this.grantAnalyticsItems
+        });
+      }
+    },
     // When the cart-ethereum-zksync component is updated, it emits an event with new data as the
     // payload. This component listens for that event and uses the data to show the user details
     // and suggestions about their checkout (gas cost estimates and why zkSync may not be
     // supported for their current cart)
     onZkSyncUpdate: function(data) {
-      this.zkSyncUnsupportedTokens = data.zkSyncUnsupportedTokens;
       this.zkSyncEstimatedGasCost = data.zkSyncEstimatedGasCost;
+    },
+
+    onPolygonUpdate: function(data) {
+      this.polygonEstimatedGasCost = data.polygonEstimatedGasCost;
     },
 
     tabChange: async function(input) {
       let vm = this;
+
+      vm.tokenListOptions = { strict: false, chainId: '', network: '' };
 
       vm.tabSelected = vm.$refs.tabs.tabs[input].id;
       if (!vm.grantsCountByTenant[vm.tabSelected]) {
@@ -445,13 +654,8 @@ Vue.component('grants-cart', {
       switch (vm.tabSelected) {
         default:
         case 'ETH':
+        case 'ETH_POLYGON':
           vm.chainId = '1';
-
-          if (!web3Modal) {
-            needWalletConnection();
-          } else if (!provider) {
-            await onConnect();
-          }
           break;
         case 'ZCASH':
           vm.chainId = '123123';
@@ -463,7 +667,7 @@ Vue.component('grants-cart', {
           vm.chainId = '102';
           break;
         case 'HARMONY':
-          vm.chainId = '1000';
+          vm.chainId = '1666600000';
           break;
         case 'BINANCE':
           vm.chainId = '56';
@@ -479,6 +683,11 @@ Vue.component('grants-cart', {
           break;
         case 'ALGORAND':
           vm.chainId = '1001';
+          vm.tokenListOptions.chainId = '1001';
+          vm.tokenListOptions.strict = true;
+          break;
+        case 'COSMOS':
+          vm.chainId = '1155';
           break;
       }
     },
@@ -499,7 +708,6 @@ Vue.component('grants-cart', {
         'tx_id': grant.payoutTxId,
         'token_symbol': grant.grant_donation_currency,
         'tenant': this.tabSelected,
-        'comment': grant.grant_comments,
         'amount_per_period': grant.grant_donation_amount
 
       }]};
@@ -562,6 +770,9 @@ Vue.component('grants-cart', {
             initAlgorandConnection(grant, vm);
           }
           break;
+        case 'COSMOS':
+          contributeWithCosmosExtension(grant, vm);
+          break;
         case 'RSK':
           contributeWithRskExtension(grant, vm);
           break;
@@ -585,35 +796,65 @@ Vue.component('grants-cart', {
       window.location.href = `${window.location.origin}/login/github/?next=/grants/cart`;
     },
     confirmClearCart() {
-      if (confirm('Are you sure you want to clear your cart?')) {
-        this.clearCart();
-      }
+      this.clearCart();
+      this.isLoading = false;
     },
-
     clearCart() {
       CartData.clearCart();
       this.grantData = [];
       update_cart_title();
     },
+
     shareCart() {
       _alert('Cart URL copied to clipboard', 'success', 1000);
       copyToClipboard(CartData.share_url());
     },
 
+    updateDonationCurrency(chain) {
+
+      if (chain == 'ETH') {
+        this.grantData.map(grant => {
+          grant.grant_donation_currency = this.selectedETHCartToken;
+        });
+      }
+      CartData.setCart(this.grantData);
+    },
+
+    twitterShareLink() {
+      const url = `https://twitter.com/intent/tweet?text=${CartData.share_url()}`;
+
+      window.open(url, '_blank');
+    },
+
+    updateCartData(e) {
+      this.grantData = (e && e.detail && e.detail.list && e.detail.list) || [];
+      update_cart_title();
+      this.grantAnalyticsItems = this.formatAnalyticsItems(this.grantData);
+    },
+
     removeGrantFromCart(id) {
+      const removal = this.grantData.find(grant => grant.grant_id === id);
+
+      if (removal) {
+        gtag('event', 'remove_from_cart', {
+          currency: this.selectedETHCartToken,
+          value: removal.grant_donation_amount,
+          items: [
+            {
+              item_id: id,
+              item_name: removal.grant_title,
+              quantity: 1,
+              item_category: removal.clr_round_num,
+              item_brand: removal.grant_admin_address
+            }
+          ]
+        });
+      }
+
       CartData.removeIdFromCart(id);
       this.grantData = CartData.loadCart();
       update_cart_title();
       this.tabChange(this.tabIndex);
-    },
-
-    addComment(id, text) {
-      // Set comment at this index to an empty string to show textarea
-      // this.grantData[id].grant_comments = text ? text : '';
-      CartData.setCart(this.grantData);
-      this.$forceUpdate();
-
-      // $('input[type=textarea]').focus();
     },
 
     updatePaymentStatus(grant_id, step = 'waiting', txnid, additionalAttributes) {
@@ -660,9 +901,18 @@ Vue.component('grants-cart', {
 
       this.grantsByTenant.forEach(grant => {
         // Scale up number by 1e18 to use BigNumber, multiply by scaleFactor
-        const totalDonationAmount = parseEther(String(grant.grant_donation_amount || 0))
-          .mul(String(scaleFactor * 100))
-          .div('100');
+
+        let totalDonationAmount;
+
+        try {
+          totalDonationAmount = parseEther(String(grant.grant_donation_amount) || 0)
+            .mul(String(Math.round(scaleFactor * 10000)))
+            .div('10000');
+        } catch {
+          totalDonationAmount = parseEther(String(0))
+            .mul(String(Math.round(scaleFactor * 10000)))
+            .div('10000');
+        }
 
         // Add the number to the totals object
         // First time seeing this token, set the field and initial value
@@ -725,7 +975,8 @@ Vue.component('grants-cart', {
         message = err;
 
       _alert(message, 'danger');
-      this.isCheckoutOngoing = false;
+      this.activeCheckout = undefined;
+      this.showConfirmationModal = false;
       indicateMetamaskPopup(true);
     },
 
@@ -737,8 +988,8 @@ Vue.component('grants-cart', {
      * response to facilitate backward compatibility
      * @param {String} name Token name, e.g. ETH or DAI
      */
-    getTokenByName(name) {
-      if (name === 'ETH') {
+    getTokenByName(name, isPolygon = false) {
+      if (name === 'ETH' && !isPolygon) {
         return {
           addr: ETH_ADDRESS,
           address: ETH_ADDRESS,
@@ -748,16 +999,15 @@ Vue.component('grants-cart', {
           priority: 1
         };
       }
-      return this.filterByChainId.filter(token => token.name === name)[0];
+
+      return this.filterByChainId.filter(token => token.name === name && token.networkId == this.networkId)[0];
     },
 
-    async applyAmountToAllGrants(grant) {
-      const preferredAmount = grant.grant_donation_amount;
-      const preferredTokenName = grant.grant_donation_currency;
-      const fallbackAmount = await this.valueToEth(preferredAmount, preferredTokenName);
-      const tenant = grant.tenants[0];
+    async applyPreferredAmountAndTokenToAllGrants(tenant) {
+      const amount = parseFloat(this.preferredAmount);
+      const fallbackAmount = await this.valueToEth(amount, this.selectedETHCartToken);
 
-      this.grantData.forEach((grant, index) => {
+      this.grantData.forEach((_, index) => {
         // Assume all tokens available on this chain are accepted by this grant. This gives us
         // an array of token symbols to compare against
         const acceptedCurrencies = this.filterByChainId.map((token) => token.symbol);
@@ -767,23 +1017,37 @@ Vue.component('grants-cart', {
           return;
 
         // Update the values
-        if (!acceptedCurrencies.includes(preferredTokenName)) {
+        if (!acceptedCurrencies.includes(this.selectedETHCartToken)) {
           // If the selected token is not available, fallback to ETH
           this.grantData[index].grant_donation_amount = fallbackAmount;
           this.grantData[index].grant_donation_currency = 'ETH';
         } else {
           // Otherwise use the user selected option
-          this.grantData[index].grant_donation_amount = preferredAmount;
-          this.grantData[index].grant_donation_currency = preferredTokenName;
+          this.grantData[index].grant_donation_amount = amount;
+          this.grantData[index].grant_donation_currency = this.selectedETHCartToken;
         }
       });
     },
 
     // Must be called at the beginning of the standard L1 bulk checkout flow
     async initializeStandardCheckout() {
+      this.sendPaymentInfoEvent('eth');
       // Prompt web3 login if not connected
       if (!provider) {
-        return await onConnect();
+        await onConnect();
+      }
+
+      if (this.nativeCurrency == 'MATIC') {
+        this.networkId = this.networkId == '80001' ? '4' : '1';
+      }
+
+      let networkName = getDataChains(this.networkId, 'chainId')[0] && getDataChains(this.networkId, 'chainId')[0].network;
+
+      // User's wallet must be connected to Ethereum mainnet or rinkeby
+      if (networkName == 'mainnet') {
+        await switchChain(1);
+      } else {
+        await switchChain(4);
       }
 
       if (typeof ga !== 'undefined') {
@@ -813,7 +1077,7 @@ Vue.component('grants-cart', {
      * @param targetContract Address of the contract to check allowance against. Currently this
      * should only be the bulkCheckout contract address
      */
-    async getAllowanceData(userAddress, targetContract) {
+    async getAllowanceData(userAddress, targetContract, isPolygon = false) {
       // Get list of tokens user is donating with
       const selectedTokens = Object.keys(this.donationsToGrants);
 
@@ -827,22 +1091,22 @@ Vue.component('grants-cart', {
         return this.donationInputs.reduce((accumulator, currentValue) => {
           return currentValue.token === tokenDetails.addr
             ? accumulator.add(new BN(currentValue.amount)) // token donation
-            : accumulator.add(new BN('0')); // ETH donation
+            : accumulator.add(new BN('0')); // native currency donation
         }, initialValue);
       };
 
       // Loop over each token in the cart and check allowance
       for (let i = 0; i < selectedTokens.length; i += 1) {
         const tokenName = selectedTokens[i];
-        const tokenDetails = this.getTokenByName(tokenName);
+        const tokenDetails = this.getTokenByName(tokenName, isPolygon);
 
-        // If ETH donation no approval is necessary, just check balance
-        if (tokenDetails.name === 'ETH') {
+        // If native currency donation no approval is necessary, just check balance
+        if (tokenDetails.name === this.nativeCurrency) {
           const userEthBalance = await web3.eth.getBalance(userAddress);
 
-          if (new BN(userEthBalance, 10).lt(new BN(this.donationInputsEthAmount, 10))) {
+          if (new BN(userEthBalance, 10).lt(new BN(this.donationInputsNativeAmount, 10))) {
             // User ETH balance is too small compared to selected donation amounts
-            throw new Error('Insufficient ETH balance to complete checkout');
+            throw new Error(`Insufficient ${tokenDetails.name} balance to complete checkout`);
           }
           // ETH balance is sufficient, continue to next iteration since no approval check
           continue;
@@ -952,7 +1216,7 @@ Vue.component('grants-cart', {
     async standardCheckout() {
       try {
         // Setup -----------------------------------------------------------------------------------
-        this.isCheckoutOngoing = true;
+        this.activeCheckout = 'standard';
         const userAddress = await this.initializeStandardCheckout();
 
         // Token approvals and balance checks (just checks data, does not execute approavals)
@@ -992,11 +1256,15 @@ Vue.component('grants-cart', {
 
     // Returns donation inputs for a transaction, filtered to remove unused data
     getDonationInputs() {
+      return this.getFilteredDonationInputs(this.donationInputs);
+    },
+
+    // Returns donation inputs for a transaction, filtered to remove unused data
+    getFilteredDonationInputs(donationInputsToFilter) {
       // We use parse and stringify to avoid mutating this.donationInputs since we use it later
-      const donationInputs = JSON.parse(JSON.stringify(this.donationInputs)).map(donation => {
+      const donationInputs = JSON.parse(JSON.stringify(donationInputsToFilter)).map(donation => {
         delete donation.name;
         delete donation.grant;
-        delete donation.comment;
         delete donation.tokenApprovalTxHash;
         return donation;
       });
@@ -1015,14 +1283,14 @@ Vue.component('grants-cart', {
       const donationInputsFiltered = this.getDonationInputs();
 
       // Send transaction
+      this.showConfirmationModal = true;
       indicateMetamaskPopup();
+
       bulkTransaction.methods
         .donate(donationInputsFiltered)
-        .send({ from: userAddress, gas: this.donationInputsGasLimitL1, value: this.donationInputsEthAmount })
+        .send({ from: userAddress, gas: this.donationInputsGasLimitL1, value: this.donationInputsNativeAmount })
         .on('transactionHash', async(txHash) => {
-          console.log('Donation transaction hash: ', txHash);
           indicateMetamaskPopup(true);
-          _alert('Saving contributions. Please do not leave this page.', 'success', 2000);
           await this.postToDatabase([txHash], bulkCheckoutAddress, userAddress); // Save contributions to database
           await this.finalizeCheckout(); // Update UI and redirect
         })
@@ -1031,20 +1299,23 @@ Vue.component('grants-cart', {
           this.handleError(error);
         });
     },
-
+    formatZkSyncTx(txHashes) {
+      return txHashes ? txHashes.map((hash) => hash.replace('0x', 'sync-tx:')) : [];
+    },
     // POSTs donation data to database. Wrapped in a try/catch, and if it fails, we fallback to the manual ingestion script
-    async postToDatabase(txHash, contractAddress, userAddress) {
+    async postToDatabase(txHash, contractAddress, userAddress, checkout_type = 'eth_std') {
       try {
         // this.grantsByTenant is the array used for donations, and this.donationInputs is computed from it
         // We loop through each donation to configure the payload then POST the required data
         const donations = this.donationInputs;
         const csrfmiddlewaretoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
-        // All transactions are the same type, so if any hash begins with `sync-tx:` we know it's a zkSync checkout
-        const checkout_type = txHash[0].startsWith('sync') ? 'eth_zksync' : 'eth_std';
-
         // If standard checkout, stretch it so there's one hash for each donation (required for `for` loop below)
-        const txHashes = checkout_type === 'eth_zksync' ? txHash : new Array(donations.length).fill(txHash[0]);
+        const txHashes = checkout_type === 'eth_zksync' ? this.formatZkSyncTx(txHash) : new Array(donations.length).fill(txHash[0]);
+
+        if (txHashes) {
+          this.analyticsHash = txHashes[0];
+        }
 
         // Configure template payload
         const saveSubscriptionPayload = {
@@ -1072,7 +1343,6 @@ Vue.component('grants-cart', {
           'gitcoin-grant-input-amount': [],
           admin_address: [],
           amount_per_period: [],
-          comment: [],
           confirmed: [],
           contract_address: [],
           contract_version: [],
@@ -1093,14 +1363,19 @@ Vue.component('grants-cart', {
           const tokenName = donation.grant.grant_donation_currency;
           const tokenDetails = this.getTokenByName(tokenName);
 
-          // Gitcoin uses the zero address to represent ETH, but the contract does not. Therefore we
-          // get the value of denomination and token_address using the below logic instead of
+          // Gitcoin uses special addresses to represent native chain currencies, but the contract does not.
+          // Therefore we get the value of denomination and token_address using the below logic instead of
           // using tokenDetails.addr
-          const isEth = tokenName === 'ETH';
-          const tokenAddress = isEth ? '0x0000000000000000000000000000000000000000' : tokenDetails.addr;
-
-          // Replace undefined comments with empty strings
-          const comment = donation.grant.grant_comments === undefined ? '' : donation.grant.grant_comments;
+          switch (tokenName) {
+            case 'ETH' && checkout_type !== 'eth_polygon':
+              tokenAddress = '0x0000000000000000000000000000000000000000';
+              break;
+            case 'MATIC' && checkout_type === 'eth_polygon':
+              tokenAddress = '0x0000000000000000000000000000000000001010';
+              break;
+            default:
+              tokenAddress = tokenDetails.addr;
+          }
 
           // For automatic contributions to Gitcoin, set 'gitcoin-grant-input-amount' to 100.
           // Why 100? Because likely no one will ever use 100% or a normal grant, so using
@@ -1111,7 +1386,6 @@ Vue.component('grants-cart', {
           // Add the donation parameters
           saveSubscriptionPayload.admin_address.push(donation.grant.grant_admin_address);
           saveSubscriptionPayload.amount_per_period.push(Number(donation.grant.grant_donation_amount));
-          saveSubscriptionPayload.comment.push(comment);
           saveSubscriptionPayload.confirmed.push(false);
           saveSubscriptionPayload.contract_address.push(donation.grant.grant_contract_address);
           saveSubscriptionPayload.contract_version.push(donation.grant.grant_contract_version);
@@ -1123,9 +1397,6 @@ Vue.component('grants-cart', {
           saveSubscriptionPayload.token_address.push(tokenAddress);
           saveSubscriptionPayload.token_symbol.push(tokenName);
         } // end for each donation
-
-        // to allow , within comments
-        saveSubscriptionPayload.comment = saveSubscriptionPayload.comment.join('_,_');
 
         // Configure request parameters
         const url = '/grants/bulk-fund';
@@ -1160,17 +1431,16 @@ Vue.component('grants-cart', {
         // Something went wrong, so we use the manual ingestion process instead
         console.error(err);
         console.log('Standard contribution ingestion failed, falling back to manual ingestion');
-        await this.postToDatabaseManualIngestion(txHash, userAddress);
+        await this.postToDatabaseManualIngestion(txHash, userAddress, checkout_type);
       }
     },
 
     // Alternative to postToDatabase that uses the manual ingestion process
-    async postToDatabaseManualIngestion(txHash, userAddress) {
+    async postToDatabaseManualIngestion(txHash, userAddress, checkout_type = 'eth_std') {
       // Determine if this was a zkSync checkout or standard L1 checkout. For this endpoint, we pass a txHash
       // to ingest L1 contributions or an address to pass L2 contributions
-      const checkout_type = txHash[0].startsWith('sync') ? 'eth_zksync' : 'eth_std';
 
-      txHash = checkout_type === 'eth_std' ? txHash[0] : ''; // txHash is always an array of hashes from checkout
+      txHash = checkout_type === 'eth_std' || checkout_type === 'eth_polygon' ? txHash[0] : ''; // txHash is always an array of hashes from checkout
       userAddress = checkout_type === 'eth_zksync' ? userAddress : '';
 
       // Get user's signature to prevent ingesting arbitrary transactions under your own username, then ingest
@@ -1192,17 +1462,17 @@ Vue.component('grants-cart', {
         console.log('ingestion response: ', json);
         if (!json.success) {
           console.log('ingestion failed');
+          _alert(`Your transactions could not be processed. Please visit ${window.location.host}/grants/add-missing-contributions to ensure your contributions are counted`, 'danger');
           throw new Error(`Your transactions could not be processed. Please visit ${window.location.host}/grants/add-missing-contributions to ensure your contributions are counted`);
         }
       } catch (err) {
         console.error(err);
         const message = `Your contribution was successful, but was not recognized by our database. Please visit ${window.location.host}/grants/add-missing-contributions to ensure your contributions are counted`;
 
-        _alert(message, 'error');
+        _alert(message, 'danger');
         throw new Error(message);
       }
     },
-
 
     // Asks user to sign a message as verification they own the provided address
     async signMessage(userAddress) {
@@ -1210,7 +1480,7 @@ Vue.component('grants-cart', {
       const ethersProvider = new ethers.providers.Web3Provider(provider); // ethers provider instance
       const signer = ethersProvider.getSigner(); // ethers signers
       const { chainId } = await ethersProvider.getNetwork(); // append chain ID if not mainnet to mitigate replay attack
-      const message = chainId === 1 ? baseMessage : `${baseMessage}\n\nChain ID: ${chainId}`;
+      const message = chainId === 1 || chainId === 137 ? baseMessage : `${baseMessage}\n\nChain ID: ${chainId}`;
 
       // Get signature from user
       const isValidSignature = (sig) => ethers.utils.isHexString(sig) && sig.length === 132; // used to verify signature
@@ -1226,7 +1496,8 @@ Vue.component('grants-cart', {
 
       // Verify signature
       if (!isValidSignature(signature)) {
-        throw new Error(`Invalid signature: ${signature}`);
+        console.error('Invalid signature', signature);
+        throw new Error('Invalid signature. Please try again.');
       }
 
       return { signature, message };
@@ -1237,19 +1508,28 @@ Vue.component('grants-cart', {
      * success alert
      */
     async finalizeCheckout() {
-      // Number of items descides the timeout time
+      // Number of items decides the timeout time
       const timeout_amount = 1500 + (this.grantsByTenant.length * 500);
+
       // Clear cart, redirect back to grants page, and show success alert
 
       CartData.setCheckedOut(this.grantsByTenant);
+
+      gtag('event', 'purchase', {
+        currency: this.selectedETHCartToken,
+        transaction_id: this.analyticsHash,
+        value: this.cartTotal,
+        items: this.grantAnalyticsItems
+      });
+
       // Remove each grant from the cart which has just been checkout
       this.grantsByTenant.forEach((grant) => {
         CartData.removeIdFromCart(grant.grant_id);
       });
 
       setTimeout(function() {
-        _alert('Contributions saved', 'success', 1000);
         setTimeout(function() {
+          this.activeCheckout = undefined;
           window.location.href = `${window.location.origin}/grants/explorer`;
         }, 500);
       }, timeout_amount);
@@ -1380,8 +1660,6 @@ Vue.component('grants-cart', {
       // if (!provider && val === '1') {
       //   await onConnect();
       // }
-
-
     },
     // Use watcher to keep local storage in sync with Vue state
     grantData: {
@@ -1420,8 +1698,11 @@ Vue.component('grants-cart', {
             this.$set(this.grantData[i], 'grant_donation_amount_usd', amount);
 
             const matchAmount = await this.predictCLRMatch(grant, amount);
+            const clr_curve = grant.grant_clr_prediction_curve;
+            const has_reached_cap = clr_curve && (clr_curve[0][1] !== 0 && clr_curve[1][2] == 0 && clr_curve[2][2] == 0 && clr_curve[3][2] == 0 && clr_curve[4][2] == 0 && clr_curve[5][2] == 0);
 
             this.$set(this.grantData[i], 'grant_donation_clr_match', matchAmount ? matchAmount.toFixed(2) : 0);
+            this.$set(this.grantData[i], 'has_reached_cap', has_reached_cap);
           }
         }
       },
@@ -1451,6 +1732,12 @@ Vue.component('grants-cart', {
     // Show loading dialog
     this.isLoading = true;
 
+    // Check if shared/global wallet functions are loaded from shared.js
+    if (!window.indicateMetamaskPopup) {
+      // rerender component to pickup load of global fncts
+      vm.$forceUpdate();
+    }
+
     // Load list of all tokens
     const tokensResponse = await fetch('/api/v1/tokens');
     const allTokens = await tokensResponse.json();
@@ -1463,8 +1750,14 @@ Vue.component('grants-cart', {
       token.name = token.symbol;
     });
 
+    // Set supported tokens for L2s
+    this.loadSupportedTokens();
+
     // Read array of grants in cart from localStorage
     let grantData = CartData.loadCart();
+
+    this.selectedETHCartToken = grantData.length > 0 && grantData[0].grant_donation_currency;
+
     const grantIds = grantData.map(grant => grant.grant_id);
 
     // Fetch updated Grants data for all cart grants
@@ -1478,10 +1771,10 @@ Vue.component('grants-cart', {
         return Number(item.grant_id) === Number(grant.grant_id);
       });
 
-      // Make sure none have empty currencies, and if they do default to 0.001 ETH. This is done
+      // Make sure none have empty currencies, and if they do default to 5 DAI. This is done
       // to prevent the cart from getting stuck loading if a currency is empty
-      updatedGrant[grantIndex]['grant_donation_currency'] = grant.grant_donation_currency ? grant.grant_donation_currency : 'ETH';
-      updatedGrant[grantIndex]['grant_donation_amount'] = grant.grant_donation_amount ? grant.grant_donation_amount : '0.001';
+      updatedGrant[grantIndex]['grant_donation_currency'] = this.selectedETHCartToken;
+      updatedGrant[grantIndex]['grant_donation_amount'] = grant.grant_donation_amount ? grant.grant_donation_amount : '5';
     });
 
     if (updatedGrant) {
@@ -1491,8 +1784,6 @@ Vue.component('grants-cart', {
       this.grantData = [];
     }
 
-    // Initialize array of empty comments
-    this.comments = this.grantData.map(grant => undefined);
 
     // Load needed scripts based on tenants
     this.setChainScripts();
@@ -1500,11 +1791,29 @@ Vue.component('grants-cart', {
     // Support responsive design
     window.addEventListener('resize', this.onResize);
 
+    // watch for cartUpdates
+    window.addEventListener('cartDataUpdated', this.updateCartData);
+
     // Show user cart now
     this.isLoading = false;
+    if (grantData.length) {
+      const currency = grantData[0].grant_donation_currency;
+
+      const cartTotal = this.setCartTotal(grantData);
+      const items = this.formatAnalyticsItems(grantData);
+
+      vm.grantAnalyticsItems;
+      gtag('event', 'begin_checkout', {
+        currency,
+        value: cartTotal,
+        items
+      });
+    }
   },
 
   beforeDestroy() {
+    // unwatch cartUpdates
+    window.removeEventListener('cartDataUpdated', this.updateCartData);
     window.removeEventListener('resize', this.onResize);
   }
 });
@@ -1527,8 +1836,7 @@ if (document.getElementById('gc-grants-cart')) {
     delimiters: [ '[[', ']]' ],
     el: '#gc-grants-cart',
     data: {
-      grantHeaders,
-      grantData
     }
   });
 }
+
