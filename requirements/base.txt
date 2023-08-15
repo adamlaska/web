@@ -116,3 +116,4 @@ libsass==0.20.1
 graphqlclient==0.2.4
 docutils==0.17.1
 unidecode==1.2.0
+tornado>=6.3.3 # not directly required, pinned by Snyk to avoid a vulnerability
