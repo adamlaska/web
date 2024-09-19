@@ -32,7 +32,7 @@
     "file-loader": "^6.2.0",
     "filemanager-webpack-plugin": "^4.0.0",
     "glob": "^7.1.6",
-    "sass": "^1.32.11",
+    "sass": "^1.79.0",
     "sass-loader": "^11.0.1",
     "stylelint": "^9.10.1",
     "stylelint-config-recommended": "^2.2.0",
