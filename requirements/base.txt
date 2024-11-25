@@ -4,7 +4,7 @@ cryptocompare==0.6
 cryptography==2.3
 celery==4.4.0
 django-celery-beat==1.1.1
-django==2.2.24
+django==4.2.16
 django-csp==3.7
 django-cors-headers==2.4.0
 django-filter==2.0.0
@@ -18,7 +18,7 @@ Markdown==3.2.1
 reportlab==3.5.55
 requests
 requests_oauthlib
-Pillow==8.3.2
+Pillow==10.3.0
 premailer
 populus
 psycopg2-binary==2.8
@@ -44,7 +44,7 @@ google-api-python-client==1.7.3
 django-environ==0.4.5
 eth-utils==1.4.1
 jsondiff==1.1.1
-Jinja2==3.0.3
+Jinja2==3.1.4
 markupsafe==2.0.1
 social-auth-app-django==5.0.0
 django-ipware==2.0.2
@@ -111,7 +111,7 @@ pyPEG2==2.15.2
 base58==2.1.0
 libnacl==1.7.2
 pyaes==1.6.1
-numpy==1.19.5
+numpy==1.22.2
 rjsmin==1.1.0
 rcssmin==1.0.6
 libsass==0.20.1
@@ -122,3 +122,7 @@ drf-flex-fields==0.9.1
 pandas==1.1.5
 django-svg-image-form-field==1.0.1
 urllib3<2
+ipython>=8.10.0 # not directly required, pinned by Snyk to avoid a vulnerability
+setuptools>=70.0.0 # not directly required, pinned by Snyk to avoid a vulnerability
+sqlparse>=0.5.0 # not directly required, pinned by Snyk to avoid a vulnerability
+zipp>=3.19.1 # not directly required, pinned by Snyk to avoid a vulnerability
