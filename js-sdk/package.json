@@ -24,7 +24,7 @@
   "main": "dist/index.js",
   "unpkg": "dist/index.js",
   "devDependencies": {
-    "@babel/core": "^7.10.4",
+    "@babel/core": "^7.23.2",
     "@babel/preset-env": "^7.10.4",
     "babel-eslint": "^8.2.3",
     "babel-loader": "^8.1.0",
